@@ -1,0 +1,469 @@
+{% extends 'base.html' %}
+{% block title %}{{ project.name }} - 项目知识卡片{% endblock %}
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>mermaid.initialize({startOnLoad: false, theme: 'dark', themeVariables: {primaryColor: '#4f46e5', primaryTextColor: '#e2e8f0', lineColor: '#94a3b8', fontSize: '14px'}});</script>
+<div class="page-container">
+    <a href="/projects/page" class="back-link">← 返回项目列表</a>
+
+    <div class="project-detail-header">
+        <h1>{{ project.name }}</h1>
+        <div class="project-meta">
+            <span class="status-badge status-{{ project.status }}">
+                {% if project.status == 'analyzed' %}✅ 已分析{% elif project.status == 'partial' %}⚠️ 分析不完整{% else %}📝 待分析{% endif %}
+            </span>
+            <span>👥 {{ project.team or '未填写' }}</span>
+            {% if project.analyzed_at %}
+            <span>🕐 分析于 {{ project.analyzed_at[:16].replace('T', ' ') }}</span>
+            {% endif %}
+        </div>
+        {% if project.tags %}
+        <div class="event-tags" style="margin-top:8px;">
+            {% for tag in project.tags %}
+            <span class="event-tag">{{ tag }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+        <div class="project-links" style="margin-top:12px;">
+            <a href="{{ project.github_url }}" target="_blank" class="btn btn-outline btn-sm">代码仓库 ↗</a>
+            {% if project.wiki_url %}
+            <a href="{{ project.wiki_url }}" target="_blank" class="btn btn-ghost btn-sm">Wiki ↗</a>
+            {% endif %}
+            <button class="btn btn-primary btn-sm" id="analyze-btn" style="display:none;" onclick="triggerAnalysis()">
+                {% if project.status == 'analyzed' %}🔄 重新分析{% else %}🚀 开始分析{% endif %}
+            </button>
+            <button class="btn btn-ghost btn-sm" id="edit-btn" style="display:none;" onclick="openEditModal()">✏️ 编辑</button>
+            <button class="btn btn-ghost btn-sm" id="delete-btn" style="display:none;" onclick="deleteProject()">🗑️ 删除</button>
+            <button class="btn btn-ghost btn-sm like-btn" id="like-btn" onclick="toggleLike()">
+                <span id="like-icon">🤍</span> <span id="like-count">0</span>
+            </button>
+        </div>
+    </div>
+
+    {% if project.status in ['analyzed', 'partial'] %}
+    <!-- 知识卡片 Tab 导航 -->
+    <div class="knowledge-tabs">
+        <button class="tab-btn active" onclick="switchTab('overview')">📋 概览</button>
+        <button class="tab-btn" onclick="switchTab('design')">🧠 设计思路</button>
+        <button class="tab-btn" onclick="switchTab('tech')">🔧 技术选型</button>
+        <button class="tab-btn" onclick="switchTab('architecture')">🏗️ 架构</button>
+        <button class="tab-btn" onclick="switchTab('code')">💡 核心代码</button>
+        <button class="tab-btn" onclick="switchTab('guide')">📖 部署指南</button>
+        <button class="tab-btn" onclick="switchTab('lessons')">🎯 经验教训</button>
+    </div>
+
+    <!-- Tab 内容 -->
+    <div class="knowledge-section" id="tab-overview">
+        <h2>📋 项目概览</h2>
+        <div class="knowledge-content">{{ project.summary or '暂无内容' }}</div>
+        {% if project.use_cases %}
+        <h2 style="margin-top:28px;">🎯 应用场景</h2>
+        <div class="knowledge-content markdown-body" data-md="{{ project.use_cases|e }}">{{ project.use_cases }}</div>
+        {% endif %}
+    </div>
+
+    <div class="knowledge-section" id="tab-design" style="display:none;">
+        <h2>🧠 设计思路</h2>
+        {% if project.diagrams %}
+            {% for d in project.diagrams %}
+                {% if d.type == 'design' %}
+                <div class="diagram-card">
+                    <h3>{{ d.title or '设计思路图' }}</h3>
+                    <div class="mermaid">{{ d.mermaid }}</div>
+                </div>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+        <div class="knowledge-content markdown-body" data-md="{{ project.design_thinking|e }}">{{ project.design_thinking or '暂无内容' }}</div>
+    </div>
+
+    <div class="knowledge-section" id="tab-tech" style="display:none;">
+        <h2>🔧 技术选型</h2>
+        {% if project.diagrams %}
+            {% for d in project.diagrams %}
+                {% if d.type == 'tech' %}
+                <div class="diagram-card">
+                    <h3>{{ d.title or '技术栈图' }}</h3>
+                    <div class="mermaid">{{ d.mermaid }}</div>
+                </div>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+        <div class="knowledge-content markdown-body" data-md="{{ project.tech_stack|e }}">{{ project.tech_stack or '暂无内容' }}</div>
+    </div>
+
+    <div class="knowledge-section" id="tab-architecture" style="display:none;">
+        <h2>🏗️ 架构描述</h2>
+        {% if project.diagrams %}
+            {% for d in project.diagrams %}
+                {% if d.type == 'architecture' %}
+                <div class="diagram-card">
+                    <h3>{{ d.title or '架构图' }}</h3>
+                    <div class="mermaid">{{ d.mermaid }}</div>
+                </div>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+        <div class="knowledge-content markdown-body" data-md="{{ project.architecture|e }}">{{ project.architecture or '暂无内容' }}</div>
+    </div>
+
+    <div class="knowledge-section" id="tab-code" style="display:none;">
+        <h2>💡 核心代码解读</h2>
+        {% if project.key_code_snippets %}
+            {% for snippet in project.key_code_snippets %}
+            <div class="code-snippet-card">
+                <div class="code-snippet-file">📄 {{ snippet.file or '未知文件' }}</div>
+                <pre><code>{{ snippet.code or '' }}</code></pre>
+                <div class="code-snippet-explanation">{{ snippet.explanation or '' }}</div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="knowledge-content">暂无核心代码解读</div>
+        {% endif %}
+    </div>
+
+    <div class="knowledge-section" id="tab-guide" style="display:none;">
+        <h2>📖 部署指南</h2>
+        <div class="knowledge-content markdown-body" data-md="{{ project.usage_guide|e }}">{{ project.usage_guide or '暂无内容' }}</div>
+    </div>
+
+    <div class="knowledge-section" id="tab-lessons" style="display:none;">
+        <h2>🎯 经验教训</h2>
+        <div class="knowledge-content markdown-body" data-md="{{ project.lessons_learned|e }}">{{ project.lessons_learned or '暂无内容' }}</div>
+    </div>
+    {% else %}
+    <div class="empty-state" style="margin-top:40px;">
+        <p>该项目尚未进行 AI 分析。</p>
+        <p>点击上方"开始分析"按钮，AI 将自动从代码仓库拉取代码和文档，提炼知识卡片。</p>
+    </div>
+    {% endif %}
+
+    <!-- 讨论区 -->
+    <div class="event-comments" style="margin-top:40px;">
+        <h2 class="event-form-title">💬 项目讨论</h2>
+        <div id="comments-list"></div>
+        <form id="comment-form" class="event-form" style="max-width:500px; margin-top:18px;">
+            <div class="form-row">
+                <textarea id="comment-content" name="content" rows="2" placeholder="对这个项目有什么想法或问题？" required></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">发表评论</button>
+                <span id="comment-form-message" class="form-message"></span>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- AI 智能体浮动按钮 -->
+<button class="ai-chat-fab" id="ai-chat-fab" onclick="toggleAiChat()">🤖</button>
+
+<!-- AI 智能体面板 -->
+<div class="ai-chat-panel" id="ai-chat-panel" style="display:none;">
+    <div class="ai-chat-header">
+        <span>🤖 AI 项目助手 · {{ project.name }}</span>
+        <button class="ai-chat-close" onclick="toggleAiChat()">&times;</button>
+    </div>
+    <div class="ai-chat-messages" id="ai-chat-messages">
+        <div class="ai-chat-msg ai-msg">
+            <div class="ai-chat-bubble">你好！我是「{{ project.name }}」的 AI 助手，可以回答关于这个项目的任何问题。试试问我：<br>• 这个项目用了什么技术？<br>• 架构是怎么设计的？<br>• 有哪些值得学习的地方？</div>
+        </div>
+    </div>
+    <form class="ai-chat-input" id="ai-chat-form">
+        <input type="text" id="ai-chat-question" placeholder="输入你的问题..." autocomplete="off">
+        <button type="submit" class="btn btn-primary btn-sm">发送</button>
+    </form>
+</div>
+
+<div id="analyze-loading" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="text-align:center;padding:40px;">
+        <div class="loading-spinner"></div>
+        <p style="margin-top:16px;">AI 正在分析项目，请稍候...</p>
+        <p style="font-size:13px;color:#94a3b8;">这可能需要 1-2 分钟</p>
+    </div>
+</div>
+
+<div id="edit-project-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>编辑项目</h2>
+            <button class="modal-close" onclick="document.getElementById('edit-project-modal').style.display='none'">&times;</button>
+        </div>
+        <form id="edit-project-form" class="event-form">
+            <div class="form-row">
+                <label for="edit-name">项目名称</label>
+                <input type="text" id="edit-name" name="name" value="{{ project.name }}">
+            </div>
+            <div class="form-row">
+                <label for="edit-github">代码仓库地址</label>
+                <input type="url" id="edit-github" name="github_url" value="{{ project.github_url }}">
+            </div>
+            <div class="form-row">
+                <label for="edit-wiki">Wiki 地址</label>
+                <input type="url" id="edit-wiki" name="wiki_url" value="{{ project.wiki_url or '' }}">
+            </div>
+            <div class="form-row">
+                <label for="edit-team">小组/成员</label>
+                <input type="text" id="edit-team" name="team" value="{{ project.team or '' }}">
+            </div>
+            <div class="form-row">
+                <label for="edit-tags">标签（逗号分隔）</label>
+                <input type="text" id="edit-tags" name="tags" value="{{ project.tags|join(', ') if project.tags else '' }}">
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">保存</button>
+                <span id="edit-project-message" class="form-message"></span>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function switchTab(name) {
+    document.querySelectorAll('.knowledge-section').forEach(s => s.style.display = 'none');
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).style.display = '';
+    event.target.classList.add('active');
+    // 渲染当前 Tab 中的 Mermaid 图表
+    renderMermaidInTab('tab-' + name);
+}
+
+async function renderMermaidInTab(tabId) {
+    const tab = document.getElementById(tabId);
+    if (!tab) return;
+    const elements = tab.querySelectorAll('.mermaid:not([data-processed])');
+    for (const el of elements) {
+        try {
+            const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
+            const {svg} = await mermaid.render(id, el.textContent.trim());
+            el.innerHTML = svg;
+            el.setAttribute('data-processed', 'true');
+        } catch (e) {
+            el.innerHTML = '<div style="color:#f87171;padding:12px;">图表渲染失败，Mermaid 语法可能有误。<pre style=\"font-size:12px;margin-top:8px;color:#94a3b8;\">' + el.textContent.substring(0, 300) + '</pre></div>';
+            el.setAttribute('data-processed', 'true');
+        }
+    }
+}
+
+async function triggerAnalysis() {
+    document.getElementById('analyze-loading').style.display = 'flex';
+    try {
+        const resp = await fetch(window.location.pathname.replace('/page', '/analyze'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (!resp.ok) {
+            const data = await resp.json();
+            alert(data.message || '分析失败');
+        } else {
+            window.location.reload();
+        }
+    } catch (e) {
+        alert('分析请求失败: ' + e.message);
+    } finally {
+        document.getElementById('analyze-loading').style.display = 'none';
+    }
+}
+
+async function deleteProject() {
+    if (!confirm('确定要删除此项目吗？')) return;
+    try {
+        const resp = await fetch(window.location.pathname.replace('/page', ''), {
+            method: 'DELETE'
+        });
+        if (resp.ok || resp.status === 204) {
+            window.location.href = '/projects/page';
+        } else {
+            const data = await resp.json();
+            alert(data.message || '删除失败');
+        }
+    } catch (e) {
+        alert('删除失败: ' + e.message);
+    }
+}
+
+function openEditModal() {
+    document.getElementById('edit-project-modal').style.display = 'flex';
+}
+
+document.getElementById('edit-project-form').onsubmit = async function(e) {
+    e.preventDefault();
+    const msg = document.getElementById('edit-project-message');
+    const payload = {
+        name: document.getElementById('edit-name').value.trim(),
+        github_url: document.getElementById('edit-github').value.trim(),
+        wiki_url: document.getElementById('edit-wiki').value.trim(),
+        team: document.getElementById('edit-team').value.trim(),
+        tags: document.getElementById('edit-tags').value.trim(),
+    };
+    try {
+        const resp = await fetch(window.location.pathname.replace('/page', ''), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (resp.ok) {
+            window.location.reload();
+        } else {
+            const data = await resp.json();
+            msg.textContent = data.message || '保存失败';
+            msg.style.color = '#f87171';
+        }
+    } catch (err) {
+        msg.textContent = '请求失败: ' + err.message;
+        msg.style.color = '#f87171';
+    }
+};
+
+async function toggleLike() {
+    try {
+        const resp = await fetch(window.location.pathname.replace('/page', '/like'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (resp.status === 401) { alert('请先登录'); return; }
+        const data = await resp.json();
+        document.getElementById('like-icon').textContent = data.liked ? '❤️' : '🤍';
+        document.getElementById('like-count').textContent = data.like_count;
+    } catch (e) {
+        alert('点赞失败: ' + e.message);
+    }
+}
+
+async function loadLikeStatus() {
+    try {
+        const resp = await fetch(window.location.pathname.replace('/page', '/like'));
+        const data = await resp.json();
+        document.getElementById('like-icon').textContent = data.liked ? '❤️' : '🤍';
+        document.getElementById('like-count').textContent = data.like_count;
+    } catch (e) {}
+}
+
+function toggleAiChat() {
+    const panel = document.getElementById('ai-chat-panel');
+    const fab = document.getElementById('ai-chat-fab');
+    if (panel.style.display === 'none') {
+        panel.style.display = 'flex';
+        fab.style.display = 'none';
+        document.getElementById('ai-chat-question').focus();
+    } else {
+        panel.style.display = 'none';
+        fab.style.display = '';
+    }
+}
+
+document.getElementById('ai-chat-form').onsubmit = async function(e) {
+    e.preventDefault();
+    const input = document.getElementById('ai-chat-question');
+    const question = input.value.trim();
+    if (!question) return;
+
+    const messagesEl = document.getElementById('ai-chat-messages');
+    // 用户消息
+    messagesEl.innerHTML += `<div class="ai-chat-msg user-msg"><div class="ai-chat-bubble">${question.replace(/</g,'&lt;')}</div></div>`;
+    input.value = '';
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    // 加载指示
+    const loadingId = 'ai-loading-' + Date.now();
+    messagesEl.innerHTML += `<div class="ai-chat-msg ai-msg" id="${loadingId}"><div class="ai-chat-bubble ai-thinking">思考中...</div></div>`;
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    try {
+        const resp = await fetch(window.location.pathname.replace('/page', '/chat'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question })
+        });
+        const data = await resp.json();
+        document.getElementById(loadingId).remove();
+        if (resp.ok) {
+            const html = marked.parse(data.answer || '');
+            messagesEl.innerHTML += `<div class="ai-chat-msg ai-msg"><div class="ai-chat-bubble markdown-body">${html}</div></div>`;
+        } else {
+            messagesEl.innerHTML += `<div class="ai-chat-msg ai-msg"><div class="ai-chat-bubble" style="color:#f87171;">${data.message || '回答失败'}</div></div>`;
+        }
+    } catch (err) {
+        document.getElementById(loadingId)?.remove();
+        messagesEl.innerHTML += `<div class="ai-chat-msg ai-msg"><div class="ai-chat-bubble" style="color:#f87171;">请求失败: ${err.message}</div></div>`;
+    }
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    // 加载点赞状态
+    loadLikeStatus();
+    // Markdown 渲染
+    document.querySelectorAll('.markdown-body[data-md]').forEach(el => {
+        const raw = el.getAttribute('data-md');
+        if (raw && raw !== 'None') {
+            el.innerHTML = marked.parse(raw);
+        }
+    });
+    // 初始渲染概览 Tab 中的 Mermaid 图表
+    renderMermaidInTab('tab-overview');
+    // 权限控制
+    fetch('/users/me').then(r => r.json()).then(data => {
+        if (data && data.id) {
+            const createdBy = {{ project.created_by or 'null' }};
+            if (data.id === createdBy) {
+                document.getElementById('analyze-btn').style.display = '';
+                document.getElementById('edit-btn').style.display = '';
+                document.getElementById('delete-btn').style.display = '';
+            }
+        }
+    }).catch(() => {});
+
+    // 加载评论
+    async function loadComments() {
+        const listEl = document.getElementById('comments-list');
+        listEl.innerHTML = '<div>加载中...</div>';
+        try {
+            const resp = await fetch(window.location.pathname.replace('/page', '/comments'));
+            const data = await resp.json();
+            if (Array.isArray(data) && data.length > 0) {
+                listEl.innerHTML = data.map(c =>
+                    `<div class='comment-item'><b>${c.username}</b>：${c.content}<span class='comment-time'>${c.created_at ? ' · ' + c.created_at.replace('T',' ').slice(0,16) : ''}</span></div>`
+                ).join('');
+            } else {
+                listEl.innerHTML = '<div>暂无评论</div>';
+            }
+        } catch {
+            listEl.innerHTML = '<div>加载失败</div>';
+        }
+    }
+    loadComments();
+
+    // 评论提交
+    const commentForm = document.getElementById('comment-form');
+    commentForm.onsubmit = async function(e) {
+        e.preventDefault();
+        const messageEl = document.getElementById('comment-form-message');
+        const content = document.getElementById('comment-content').value.trim();
+        if (!content) {
+            messageEl.textContent = '内容不能为空';
+            messageEl.classList.add('error');
+            return;
+        }
+        try {
+            const resp = await fetch(window.location.pathname.replace('/page', '/comments'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content })
+            });
+            if (!resp.ok) {
+                const data = await resp.json();
+                throw new Error(data.message || '评论失败');
+            }
+            messageEl.textContent = '评论成功！';
+            messageEl.classList.remove('error');
+            commentForm.reset();
+            loadComments();
+        } catch (err) {
+            messageEl.textContent = err.message;
+            messageEl.classList.add('error');
+        }
+    };
+});
+</script>
+{% endblock %}

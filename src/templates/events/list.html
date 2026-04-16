@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event List</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    {% extends 'base.html' %}
+
+    {% block title %}AI 沙龙 · 活动列表{% endblock %}
+
+    {% block content %}
+    <div class="page-header">
+        <div class="page-title-group">
+            <h1 class="page-title">AI 沙龙 · 活动列表</h1>
+            <p class="page-subtitle">发现最新的 AI 主题交流活动，和同好一起碰撞灵感。</p>
+        </div>
+        <button class="btn btn-primary btn-create-toggle" id="btn-create-toggle" style="display:none;">+ 创建新活动</button>
+    </div>
+
+    {% set all_tags = [] %}
+    {% for event in events %}
+        {% for tag in event.tags %}
+            {% if tag not in all_tags %}{% set _ = all_tags.append(tag) %}{% endif %}
+        {% endfor %}
+    {% endfor %}
+    <div class="tags-filter-bar">
+        <span class="tags-filter-label">标签筛选：</span>
+        <a href="/events/page" class="tag-filter-btn{% if not request.args.get('tag') %} active{% endif %}">全部</a>
+        {% for tag in all_tags %}
+            <a href="/events/page?tag={{ tag }}" class="tag-filter-btn{% if request.args.get('tag') == tag %} active{% endif %}">{{ tag }}</a>
+        {% endfor %}
+    </div>
+
+    <div class="events-grid" id="events-list">
+        {% if events %}
+            {% for event in events %}
+                <div class="event-card" data-id="{{ event.id }}">
+                    <div class="event-card-header">
+                        <h2 class="event-title">
+                            <a href="/events/{{ event.id }}/page">{{ event.title }}</a>
+                        </h2>
+                        {% if event.location %}
+                            <span class="event-location">{{ event.location }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="event-meta">
+                        <span class="event-time-range" data-start="{{ event.start_time }}" data-end="{{ event.end_time or '' }}">
+                            📅 {{ event.start_time[:16].replace('T', ' ') if event.start_time else '待定时间' }}
+                        </span>
+                        {% if event.id %}
+                            <span class="event-id">#{{ event.id }}</span>
+                        {% endif %}
+                    </div>
+                    {% if event.description %}
+                        <p class="event-desc">{{ event.description }}</p>
+                    {% else %}
+                        <p class="event-desc event-desc-empty">本次活动还没有详细介绍，但一定很精彩。</p>
+                    {% endif %}
+                    {% if event.tags %}
+                        <div class="event-tags">
+                            {% for tag in event.tags %}
+                                <span class="event-tag">{{ tag }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    <div class="event-actions">
+                        <a class="btn btn-outline" href="/events/{{ event.id }}/page">查看详情</a>
+                        <button class="btn btn-ghost btn-delete" data-id="{{ event.id }}" style="display:none;">删除</button>
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <h2>还没有活动</h2>
+                <p>你可以点击右上角“创建新活动”按钮来添加一些活动。</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- 创建活动弹窗 -->
+    <div class="modal" id="event-modal" style="display:none;">
+        <div class="modal-backdrop" id="event-modal-backdrop"></div>
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h2 class="event-form-title">创建新活动</h2>
+                <button class="btn btn-ghost btn-close-form" id="btn-close-form">×</button>
+            </div>
+            <form id="event-form" class="event-form">
+                <div class="form-row">
+                    <label for="title">活动标题</label>
+                    <input type="text" id="title" name="title" placeholder="例如：AI 沙龙 第四期：从零开始玩转大模型" required>
+                </div>
+                <div class="form-row">
+                    <label for="location">活动地点</label>
+                    <input type="text" id="location" name="location" placeholder="线上 / 线下地点" required>
+                </div>
+                <div class="form-row" style="display:flex;gap:12px;">
+                    <div style="flex:1;">
+                        <label for="start_time">开始时间</label>
+                        <input type="datetime-local" id="start_time" name="start_time" required>
+                    </div>
+                    <div style="flex:1;">
+                        <label for="end_time">结束时间</label>
+                        <input type="datetime-local" id="end_time" name="end_time">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label for="description">活动简介</label>
+                    <textarea id="description" name="description" rows="3" placeholder="简单介绍一下本次沙龙会聊什么、适合谁参加"></textarea>
+                </div>
+                <div class="form-row">
+                    <label for="tags">活动标签（逗号分隔）</label>
+                    <input type="text" id="tags" name="tags" placeholder="如：AI, 线下, 公开课">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">保存活动</button>
+                    <span id="form-message" class="form-message"></span>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const WEEKDAYS = ['周日','周一','周二','周三','周四','周五','周六'];
+        function fmtDate(d) {
+            return `${d.getMonth()+1}月${d.getDate()}日`;
+        }
+        function fmtTime(d) {
+            return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+        }
+        function fmtFull(d) {
+            return `${d.getFullYear()}年${fmtDate(d)} ${WEEKDAYS[d.getDay()]} ${fmtTime(d)}`;
+        }
+        function formatTimeRange(startIso, endIso) {
+            if (!startIso) return '📅 待定时间';
+            const s = new Date(startIso);
+            if (isNaN(s.getTime())) return '📅 ' + startIso;
+            let text = '📅 ' + fmtFull(s);
+            if (endIso) {
+                const e = new Date(endIso);
+                if (!isNaN(e.getTime())) {
+                    const sameDay = s.getFullYear()===e.getFullYear() && s.getMonth()===e.getMonth() && s.getDate()===e.getDate();
+                    text += sameDay ? ` — ${fmtTime(e)}` : ` — ${fmtFull(e)}`;
+                }
+            }
+            return text;
+        }
+        function applyDateFormatting() {
+            document.querySelectorAll('.event-time-range').forEach(el => {
+                el.textContent = formatTimeRange(el.dataset.start, el.dataset.end);
+            });
+        }
+
+        async function createEvent(event) {
+            event.preventDefault();
+            const form = document.getElementById('event-form');
+            const messageEl = document.getElementById('form-message');
+            const payload = {
+                title: form.title.value.trim(),
+                location: form.location.value.trim(),
+                start_time: form.start_time.value || '',
+                end_time: form.end_time.value || '',
+                description: form.description.value.trim(),
+                tags: form.tags.value.trim()
+            };
+            if (!payload.title || !payload.location) {
+                messageEl.textContent = '标题和地点不能为空';
+                messageEl.classList.add('error');
+                return;
+            }
+            try {
+                const resp = await fetch('/events/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!resp.ok) {
+                    throw new Error('创建失败');
+                }
+                // 简单做法：创建成功后刷新页面，保证和后端数据一致
+                window.location.reload();
+            } catch (e) {
+                messageEl.textContent = '创建活动失败，请稍后再试';
+                messageEl.classList.add('error');
+            }
+        }
+
+        async function deleteEvent(id) {
+            if (!confirm('确定要删除这个活动吗？')) return;
+            try {
+                const resp = await fetch(`/events/${id}`, {
+                    method: 'DELETE'
+                });
+                if (!resp.ok && resp.status !== 204) {
+                    throw new Error('删除失败');
+                }
+                const card = document.querySelector(`.event-card[data-id="${id}"]`);
+                if (card) card.remove();
+            } catch (e) {
+                alert('删除活动失败，请稍后再试');
+            }
+        }
+
+        // 权限控制：登录后才显示新建/删除按钮
+        async function updateAuthUI() {
+            let user = null;
+            try {
+                const resp = await fetch('/users/me');
+                if (resp.ok) user = await resp.json();
+            } catch {}
+            // 新建按钮
+            const btnCreate = document.getElementById('btn-create-toggle');
+            if (btnCreate) btnCreate.style.display = user ? '' : 'none';
+            // 删除按钮
+            document.querySelectorAll('.btn-delete').forEach(btn => {
+                btn.style.display = user ? '' : 'none';
+                btn.onclick = user ? btn.onclick : function() {
+                    // 未登录时弹出登录弹窗
+                    if (window.openUserModal) window.openUserModal();
+                };
+            });
+            // 新建按钮未登录时弹窗
+            if (btnCreate && !user) {
+                btnCreate.onclick = function() {
+                    if (window.openUserModal) window.openUserModal();
+                };
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            applyDateFormatting();
+
+            const form = document.getElementById('event-form');
+            form.addEventListener('submit', createEvent);
+
+            document.querySelectorAll('.btn-delete').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.getAttribute('data-id');
+                    if (id) deleteEvent(id);
+                });
+            });
+
+            const modal = document.getElementById('event-modal');
+            const backdrop = document.getElementById('event-modal-backdrop');
+            const btnToggle = document.getElementById('btn-create-toggle');
+            const btnClose = document.getElementById('btn-close-form');
+
+            function openModal() {
+                if (modal) {
+                    modal.style.display = 'block';
+                }
+            }
+
+            function closeModal() {
+                if (modal) {
+                    modal.style.display = 'none';
+                }
+            }
+
+            if (btnToggle) {
+                btnToggle.addEventListener('click', openModal);
+            }
+            if (btnClose) {
+                btnClose.addEventListener('click', closeModal);
+            }
+            if (backdrop) {
+                backdrop.addEventListener('click', closeModal);
+            }
+
+            updateAuthUI();
+        });
+    </script>
+    {% endblock %}
+</body>
+</html>

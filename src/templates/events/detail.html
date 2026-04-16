@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>活动详情 - {{ event.title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    {% extends 'base.html' %}
+    {% block title %}活动详情 - {{ event.title }}{% endblock %}
+    {% block content %}
+    <div class="event-detail-container">
+        <a href="/events/page" class="detail-back-link">← 返回活动列表</a>
+
+        <!-- 活动主卡片 -->
+        <div class="detail-hero">
+            <div class="detail-hero-header">
+                <h1 class="detail-hero-title">{{ event.title }}</h1>
+                <div class="detail-hero-actions">
+                    <button class="btn btn-primary" id="btn-edit-event" style="display:none;">✏️ 编辑</button>
+                    <button class="btn btn-ghost btn-danger" id="btn-delete-event" style="display:none;">🗑️ 删除</button>
+                </div>
+            </div>
+
+            <div class="detail-info-bar">
+                <div class="detail-info-item">
+                    <span class="detail-info-icon">📅</span>
+                    <span class="event-time-range" data-start="{{ event.start_time }}" data-end="{{ event.end_time or '' }}">
+                        {{ event.start_time[:16].replace('T', ' ') if event.start_time else '待定时间' }}
+                    </span>
+                </div>
+                {% if event.location %}
+                <div class="detail-info-item">
+                    <span class="detail-info-icon">📍</span>
+                    <span>{{ event.location }}</span>
+                </div>
+                {% endif %}
+                {% if event.creator_name %}
+                <div class="detail-info-item">
+                    <span class="detail-info-icon">{{ event.creator_avatar or '🐱' }}</span>
+                    <span>发起人：{{ event.creator_name }}</span>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if event.tags %}
+            <div class="detail-tags">
+                {% for tag in event.tags %}
+                <span class="event-tag">{{ tag }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="detail-description">
+                <h3 class="detail-section-label">活动介绍</h3>
+                <p>{{ event.description or '暂无活动介绍，敬请期待。' }}</p>
+            </div>
+        </div>
+
+        <!-- 关联项目 -->
+        <div class="detail-panel" style="margin-top:24px;">
+            <div class="detail-panel-header">
+                <h2 class="detail-panel-title">🔗 关联项目</h2>
+                <button class="btn btn-outline btn-sm" id="btn-add-project" style="display:none;">+ 关联项目</button>
+            </div>
+            <div id="linked-projects-list" class="linked-projects-list">
+                <div style="color:#94a3b8;font-size:14px;">加载中...</div>
+            </div>
+            <!-- 项目选择弹窗 -->
+            <div id="project-picker" class="project-picker" style="display:none;">
+                <div class="detail-form-row" style="margin-bottom:8px;">
+                    <input type="text" id="project-search-input" placeholder="搜索项目名称..." style="width:100%;">
+                </div>
+                <div id="project-picker-list" class="project-picker-list"></div>
+            </div>
+        </div>
+
+        <!-- 双列布局：参与对象 + 留言 -->
+        <div class="detail-two-col">
+            <!-- 参与对象 -->
+            <div class="detail-panel" id="participants-panel">
+                <div class="detail-panel-header">
+                    <h2 class="detail-panel-title">👥 参与对象</h2>
+                    <span class="detail-panel-badge" id="participant-count">0</span>
+                </div>
+                <div id="participants-list" class="detail-signup-list" style="margin-bottom:12px;"></div>
+                <div id="add-participant-area" style="display:none;">
+                    <div class="detail-form-row" style="display:flex;gap:8px;">
+                        <select id="participant-type" class="detail-form-select" style="width:100px;">
+                            <option value="user">用户</option>
+                            <option value="group">用户组</option>
+                        </select>
+                        <select id="participant-target" class="detail-form-select" style="flex:1;"></select>
+                        <button class="btn btn-primary btn-sm" id="btn-add-participant">添加</button>
+                    </div>
+                    <button class="btn btn-outline btn-sm" id="btn-notify-all" style="margin-top:10px;width:100%;">📧 通知全部参与者</button>
+                    <span id="notify-msg" class="form-message" style="display:block;margin-top:6px;"></span>
+                </div>
+            </div>
+
+            <!-- 留言区 -->
+            <div class="detail-panel">
+                <div class="detail-panel-header">
+                    <h2 class="detail-panel-title">💬 活动留言</h2>
+                </div>
+                <div class="detail-comments-list" id="comments-list"></div>
+                <form id="comment-form" class="detail-form" style="margin-top:12px;">
+                    <div class="detail-form-row">
+                        <textarea id="comment-content" name="content" rows="2" placeholder="说点什么..." required></textarea>
+                    </div>
+                    <div class="detail-form-actions">
+                        <button type="submit" class="btn btn-primary btn-sm">发表评论</button>
+                        <span id="comment-form-message" class="form-message"></span>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <!-- 编辑活动弹窗 -->
+    <div class="modal" id="edit-modal" style="display:none;">
+        <div class="modal-backdrop" id="edit-modal-backdrop"></div>
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h2 class="event-form-title">编辑活动</h2>
+                <button class="btn btn-ghost btn-close-form" id="btn-close-edit">×</button>
+            </div>
+            <form id="edit-form" class="event-form">
+                <div class="form-row">
+                    <label for="edit-title">活动标题</label>
+                    <input type="text" id="edit-title" name="title" value="{{ event.title }}" required>
+                </div>
+                <div class="form-row">
+                    <label for="edit-location">活动地点</label>
+                    <input type="text" id="edit-location" name="location" value="{{ event.location }}" required>
+                </div>
+                <div class="form-row" style="display:flex;gap:12px;">
+                    <div style="flex:1;">
+                        <label for="edit-start-time">开始时间</label>
+                        <input type="datetime-local" id="edit-start-time" name="start_time" value="{{ event.start_time[:16] if event.start_time else '' }}" required>
+                    </div>
+                    <div style="flex:1;">
+                        <label for="edit-end-time">结束时间</label>
+                        <input type="datetime-local" id="edit-end-time" name="end_time" value="{{ event.end_time[:16] if event.end_time else '' }}">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label for="edit-description">活动简介</label>
+                    <textarea id="edit-description" name="description" rows="3">{{ event.description }}</textarea>
+                </div>
+                <div class="form-row">
+                    <label for="edit-tags">活动标签（逗号分隔）</label>
+                    <input type="text" id="edit-tags" name="tags" value="{{ event.tags|join(', ') }}">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">保存修改</button>
+                    <span id="edit-form-message" class="form-message"></span>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const WEEKDAYS = ['周日','周一','周二','周三','周四','周五','周六'];
+            function fmtDate(d) { return `${d.getMonth()+1}月${d.getDate()}日`; }
+            function fmtTime(d) { return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+            function fmtFull(d) { return `${d.getFullYear()}年${fmtDate(d)} ${WEEKDAYS[d.getDay()]} ${fmtTime(d)}`; }
+            document.querySelectorAll('.event-time-range').forEach(el => {
+                const startIso = el.dataset.start, endIso = el.dataset.end;
+                if (!startIso) { el.textContent = '📅 待定时间'; return; }
+                const s = new Date(startIso);
+                if (isNaN(s.getTime())) return;
+                let text = '📅 ' + fmtFull(s);
+                if (endIso) {
+                    const e = new Date(endIso);
+                    if (!isNaN(e.getTime())) {
+                        const sameDay = s.getFullYear()===e.getFullYear() && s.getMonth()===e.getMonth() && s.getDate()===e.getDate();
+                        text += sameDay ? ` — ${fmtTime(e)}` : ` — ${fmtFull(e)}`;
+                    }
+                }
+                el.textContent = text;
+            });
+
+            // 编辑弹窗逻辑
+            const editModal = document.getElementById('edit-modal');
+            const editBackdrop = document.getElementById('edit-modal-backdrop');
+            const btnEdit = document.getElementById('btn-edit-event');
+            const btnCloseEdit = document.getElementById('btn-close-edit');
+            if (btnEdit) btnEdit.onclick = () => { editModal.style.display = 'block'; };
+            if (btnCloseEdit) btnCloseEdit.onclick = () => { editModal.style.display = 'none'; };
+            if (editBackdrop) editBackdrop.onclick = () => { editModal.style.display = 'none'; };
+
+            // 编辑表单提交
+            const editForm = document.getElementById('edit-form');
+            if (editForm) {
+                editForm.onsubmit = async function(e) {
+                    e.preventDefault();
+                    const messageEl = document.getElementById('edit-form-message');
+                    const payload = {
+                        title: editForm.title.value.trim(),
+                        location: editForm.location.value.trim(),
+                        start_time: editForm.start_time.value || '',
+                        end_time: editForm.end_time.value || '',
+                        description: editForm.description.value.trim(),
+                        tags: editForm.tags.value.trim()
+                    };
+                    if (!payload.title || !payload.location) {
+                        messageEl.textContent = '标题和地点不能为空';
+                        messageEl.classList.add('error');
+                        return;
+                    }
+                    try {
+                        const resp = await fetch(window.location.pathname.replace('/page',''), {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        if (!resp.ok) {
+                            let msg = '保存失败';
+                            try {
+                                const data = await resp.json();
+                                if (data && data.message) {
+                                    if (resp.status === 403 && data.message.includes('无权限')) {
+                                        msg = '只有主办者本人可编辑此活动';
+                                    } else {
+                                        msg = data.message;
+                                    }
+                                }
+                            } catch {}
+                            throw new Error(msg);
+                        }
+                        window.location.reload();
+                    } catch (e) {
+                        messageEl.textContent = e.message || '保存失败，请稍后再试';
+                        messageEl.classList.add('error');
+                    }
+                };
+            }
+
+            // ===== 活动 ID =====
+            const eventId = {{ event.id }};
+
+            // ===== 参与对象功能 =====
+            async function loadParticipants() {
+                const listEl = document.getElementById('participants-list');
+                if (!listEl) return;
+                listEl.innerHTML = '<div style="color:#94a3b8;font-size:14px;">加载中...</div>';
+                try {
+                    const resp = await fetch(`/events/${eventId}/participants`);
+                    const data = await resp.json();
+                    const badge = document.getElementById('participant-count');
+                    if (badge) badge.textContent = data.length;
+                    if (data.length === 0) {
+                        listEl.innerHTML = '<div style="color:#94a3b8;font-size:14px;">暂无参与对象</div>';
+                    } else {
+                        listEl.innerHTML = data.map(p => {
+                            const icon = p.type === 'group' ? '👥' : (p.avatar || '🐱');
+                            const label = p.type === 'group' ? `${p.name}（${p.member_count}人）` : p.name;
+                            return `<li class="participant-item">
+                                <span>${icon} ${label}</span>
+                                <button class="btn btn-ghost btn-sm btn-remove-participant" data-pid="${p.id}" style="display:none;">✕</button>
+                            </li>`;
+                        }).join('');
+                    }
+                } catch {
+                    listEl.innerHTML = '<div style="color:#f87171;font-size:14px;">加载失败</div>';
+                }
+                // 渲染完后更新删除按钮权限
+                updateParticipantAuthUI();
+            }
+            loadParticipants();
+
+            async function loadParticipantOptions() {
+                const typeSelect = document.getElementById('participant-type');
+                const targetSelect = document.getElementById('participant-target');
+                const type = typeSelect.value;
+                targetSelect.innerHTML = '<option value="">加载中...</option>';
+                try {
+                    if (type === 'user') {
+                        const resp = await fetch('/users/users');
+                        const users = await resp.json();
+                        targetSelect.innerHTML = users.map(u => `<option value="${u.id}">${u.display_name || u.username}</option>`).join('');
+                    } else {
+                        const resp = await fetch('/users/groups');
+                        const groups = await resp.json();
+                        targetSelect.innerHTML = groups.map(g => `<option value="${g.id}">${g.name}（${g.member_count}人）</option>`).join('');
+                    }
+                } catch {
+                    targetSelect.innerHTML = '<option value="">加载失败</option>';
+                }
+            }
+
+            const participantType = document.getElementById('participant-type');
+            if (participantType) {
+                participantType.onchange = loadParticipantOptions;
+            }
+
+            const btnAddParticipant = document.getElementById('btn-add-participant');
+            if (btnAddParticipant) {
+                btnAddParticipant.onclick = async () => {
+                    const type = document.getElementById('participant-type').value;
+                    const target = document.getElementById('participant-target').value;
+                    if (!target) return;
+                    const payload = type === 'user' ? {user_id: parseInt(target)} : {group_id: parseInt(target)};
+                    await fetch(`/events/${eventId}/participants`, {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify(payload)
+                    });
+                    loadParticipants();
+                    updateParticipantAuthUI();
+                };
+            }
+
+            // 通知全部参与者
+            const btnNotifyAll = document.getElementById('btn-notify-all');
+            if (btnNotifyAll) {
+                btnNotifyAll.onclick = async () => {
+                    const msg = document.getElementById('notify-msg');
+                    btnNotifyAll.disabled = true;
+                    btnNotifyAll.textContent = '📧 发送中...';
+                    msg.textContent = '';
+                    try {
+                        const resp = await fetch(`/events/${eventId}/notify`, {
+                            method: 'POST',
+                            headers: {'Content-Type':'application/json'}
+                        });
+                        const data = await resp.json();
+                        msg.textContent = data.message;
+                        msg.classList.remove('error');
+                    } catch {
+                        msg.textContent = '通知发送失败';
+                        msg.classList.add('error');
+                    }
+                    btnNotifyAll.disabled = false;
+                    btnNotifyAll.textContent = '📧 通知全部参与者';
+                };
+            }
+
+            // 评论加载与提交
+            async function loadComments() {
+                const listEl = document.getElementById('comments-list');
+                if (!listEl) return;
+                listEl.innerHTML = '<div>加载中...</div>';
+                try {
+                    const resp = await fetch(window.location.pathname.replace('/page','/comments'));
+                    const data = await resp.json();
+                    if (Array.isArray(data) && data.length > 0) {
+                        listEl.innerHTML = data.map(c => `<div class='comment-item'><b>${c.username}</b>：${c.content}<span class='comment-time'>${c.created_at ? ' · ' + c.created_at.replace('T',' ').slice(0,16) : ''}</span></div>`).join('');
+                    } else {
+                        listEl.innerHTML = '<div>暂无留言</div>';
+                    }
+                } catch {
+                    listEl.innerHTML = '<div>加载失败</div>';
+                }
+            }
+            loadComments();
+            // 评论表单提交
+            const commentForm = document.getElementById('comment-form');
+            if (commentForm) {
+                commentForm.onsubmit = async function(e) {
+                    e.preventDefault();
+                    const messageEl = document.getElementById('comment-form-message');
+                    const content = document.getElementById('comment-content').value.trim();
+                    if (!content) {
+                        messageEl.textContent = '内容不能为空';
+                        messageEl.classList.add('error');
+                        return;
+                    }
+                    try {
+                        const resp = await fetch(window.location.pathname.replace('/page','/comments'), {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ content })
+                        });
+                        if (!resp.ok) {
+                            let msg = '评论失败';
+                            try {
+                                const data = await resp.json();
+                                if (data && data.message) msg = data.message;
+                            } catch {}
+                            throw new Error(msg);
+                        }
+                        messageEl.textContent = '评论成功！';
+                        messageEl.classList.remove('error');
+                        commentForm.reset();
+                        loadComments();
+                    } catch (e) {
+                        messageEl.textContent = e.message || '评论失败，请稍后再试';
+                        messageEl.classList.add('error');
+                    }
+                };
+            }
+
+            // 权限控制：活动创建者可管理参与对象
+            async function updateParticipantAuthUI() {
+                let user = null;
+                try {
+                    const resp = await fetch('/users/me');
+                    if (resp.ok) user = await resp.json();
+                } catch {}
+                const addArea = document.getElementById('add-participant-area');
+                const isCreator = user && user.id === {{ event.user_id or 'null' }};
+                if (addArea) {
+                    addArea.style.display = isCreator ? '' : 'none';
+                    if (isCreator) loadParticipantOptions();
+                }
+                document.querySelectorAll('.btn-remove-participant').forEach(btn => {
+                    btn.style.display = isCreator ? '' : 'none';
+                    if (isCreator) {
+                        btn.onclick = async () => {
+                            const pid = btn.dataset.pid;
+                            await fetch(`/events/${eventId}/participants/${pid}`, {method:'DELETE'});
+                            loadParticipants();
+                            updateParticipantAuthUI();
+                        };
+                    }
+                });
+            }
+            updateParticipantAuthUI();
+            async function updateDetailAuthUI() {
+                let user = null;
+                try {
+                    const resp = await fetch('/users/me');
+                    if (resp.ok) user = await resp.json();
+                } catch {}
+                const btnEdit = document.getElementById('btn-edit-event');
+                const btnDelete = document.getElementById('btn-delete-event');
+                if (btnEdit) btnEdit.style.display = user ? '' : 'none';
+                if (btnDelete) btnDelete.style.display = user ? '' : 'none';
+                if (btnEdit && !user) btnEdit.onclick = function() { if (window.openUserModal) window.openUserModal(); };
+                if (btnDelete && !user) btnDelete.onclick = function() { if (window.openUserModal) window.openUserModal(); };
+                // 删除事件
+                if (btnDelete && user) {
+                    btnDelete.onclick = async function() {
+                        if (!confirm('确定要删除这个活动吗？')) return;
+                        const url = window.location.pathname.replace('/page','');
+                        const resp = await fetch(url, {method:'DELETE'});
+                        if (resp.ok || resp.status === 204) {
+                            alert('活动已删除');
+                            window.location.href = '/events/page';
+                        } else {
+                            alert('删除失败');
+                        }
+                    };
+                }
+            }
+            updateDetailAuthUI();
+
+            // ===== 关联项目功能 =====
+            const linkedList = document.getElementById('linked-projects-list');
+            const btnAddProject = document.getElementById('btn-add-project');
+            const projectPicker = document.getElementById('project-picker');
+            const projectPickerList = document.getElementById('project-picker-list');
+            const projectSearchInput = document.getElementById('project-search-input');
+            let allProjects = [];
+            let linkedProjectIds = new Set();
+
+            async function loadLinkedProjects() {
+                try {
+                    const resp = await fetch(`/events/${eventId}/projects`);
+                    const data = await resp.json();
+                    linkedProjectIds = new Set(data.map(p => p.id));
+                    if (data.length === 0) {
+                        linkedList.innerHTML = '<div style="color:#94a3b8;font-size:14px;">暂无关联项目</div>';
+                    } else {
+                        linkedList.innerHTML = data.map(p => `
+                            <div class="linked-project-card">
+                                <a href="/projects/${p.id}/page" class="linked-project-info">
+                                    <span class="linked-project-name">${p.name}</span>
+                                    <span class="linked-project-summary">${p.summary ? p.summary.slice(0, 80) : '暂无简介'}</span>
+                                </a>
+                                <button class="btn btn-ghost btn-sm btn-unlink" data-pid="${p.id}" title="取消关联">✕</button>
+                            </div>
+                        `).join('');
+                        linkedList.querySelectorAll('.btn-unlink').forEach(btn => {
+                            btn.onclick = async () => {
+                                const pid = btn.dataset.pid;
+                                await fetch(`/events/${eventId}/projects/${pid}`, {method:'DELETE'});
+                                loadLinkedProjects();
+                            };
+                        });
+                    }
+                } catch {
+                    linkedList.innerHTML = '<div style="color:#f87171;font-size:14px;">加载失败</div>';
+                }
+            }
+            loadLinkedProjects();
+
+            async function loadAllProjects() {
+                if (allProjects.length > 0) return;
+                try {
+                    const resp = await fetch('/projects/');
+                    allProjects = await resp.json();
+                } catch { allProjects = []; }
+            }
+
+            function renderPickerList(keyword) {
+                const filtered = allProjects.filter(p =>
+                    !linkedProjectIds.has(p.id) &&
+                    (!keyword || p.name.toLowerCase().includes(keyword.toLowerCase()))
+                );
+                if (filtered.length === 0) {
+                    projectPickerList.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:8px 0;">没有可关联的项目</div>';
+                    return;
+                }
+                projectPickerList.innerHTML = filtered.map(p => `
+                    <div class="picker-item" data-pid="${p.id}">
+                        <span class="picker-item-name">${p.name}</span>
+                        <button class="btn btn-primary btn-sm">关联</button>
+                    </div>
+                `).join('');
+                projectPickerList.querySelectorAll('.picker-item button').forEach(btn => {
+                    btn.onclick = async () => {
+                        const pid = btn.closest('.picker-item').dataset.pid;
+                        btn.disabled = true;
+                        btn.textContent = '...';
+                        await fetch(`/events/${eventId}/projects`, {
+                            method: 'POST',
+                            headers: {'Content-Type':'application/json'},
+                            body: JSON.stringify({project_id: parseInt(pid)})
+                        });
+                        await loadLinkedProjects();
+                        await loadAllProjects();
+                        renderPickerList(projectSearchInput.value.trim());
+                    };
+                });
+            }
+
+            if (btnAddProject) {
+                btnAddProject.onclick = async () => {
+                    const visible = projectPicker.style.display !== 'none';
+                    if (visible) {
+                        projectPicker.style.display = 'none';
+                    } else {
+                        projectPicker.style.display = 'block';
+                        await loadAllProjects();
+                        renderPickerList('');
+                    }
+                };
+            }
+            if (projectSearchInput) {
+                projectSearchInput.oninput = () => renderPickerList(projectSearchInput.value.trim());
+            }
+
+            // 登录后显示关联按钮 + 取消关联按钮
+            async function updateProjectAuthUI() {
+                let user = null;
+                try {
+                    const resp = await fetch('/users/me');
+                    if (resp.ok) user = await resp.json();
+                } catch {}
+                if (btnAddProject) btnAddProject.style.display = user ? '' : 'none';
+                linkedList.querySelectorAll('.btn-unlink').forEach(b => b.style.display = user ? '' : 'none');
+            }
+            updateProjectAuthUI();
+        });
+    </script>
+    {% endblock %}
+</body>
+</html>

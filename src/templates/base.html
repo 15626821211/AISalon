@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI 沙龙 活动平台{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body class="stars-overlay">
+<header class="navbar">
+    <div class="navbar-brand">AI 沙龙</div>
+    <nav class="navbar-links">
+        <a href="/">首页</a>
+        <a href="/events/page">活动列表</a>
+        <a href="/projects/page" id="projects-link" style="display:none;">项目知识库</a>
+        <a href="/projects/search/page" id="search-link" style="display:none;">🔍 搜索</a>
+        <a href="/users/profile" id="profile-link" style="display:none;">个人中心</a>
+    </nav>
+    <div class="navbar-user" id="navbar-user">
+        <!-- 登录/注册/用户信息按钮会由 JS 动态插入 -->
+    </div>
+</header>
+<main class="main-container container">
+    <div class="hero-container">
+        <!-- 首页 Hero 内容 -->
+    </div>
+    {% block content %}{% endblock %}
+</main>
+<script>
+(function() {
+    const path = location.pathname;
+    document.querySelectorAll('.navbar-links a').forEach(a => {
+        const href = a.getAttribute('href');
+        if (href === '/' ? path === '/' : path.startsWith(href)) {
+            a.classList.add('nav-active');
+        }
+    });
+})();
+</script>
+<footer class="footer">
+    © {{ 2026 }} AI Salon · 用 AI 连接创意与实践
+</footer>
+
+<!-- 登录弹窗 -->
+<div class="modal" id="user-modal" style="display:none;">
+    <div class="modal-backdrop" id="user-modal-backdrop"></div>
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h2 class="event-form-title" id="user-modal-title">登录</h2>
+            <button class="btn btn-ghost btn-close-form" id="btn-close-user-modal">×</button>
+        </div>
+        <form id="user-form" class="event-form">
+            <div class="form-row">
+                <label for="user-username">用户名</label>
+                <input type="text" id="user-username" name="username" required>
+            </div>
+            <div class="form-row">
+                <label for="user-password">密码</label>
+                <input type="password" id="user-password" name="password" required>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary" id="user-form-submit">登录</button>
+                <span id="user-form-message" class="form-message"></span>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+// 登录/注册弹窗与用户信息展示
+function renderUserBar(user) {
+    const bar = document.getElementById('navbar-user');
+    let html = '';
+    if (user && user.username) {
+        const adminLink = user.is_admin ? ' <a href="/users/admin" class="btn btn-ghost" style="font-size:13px;">管理</a>' : '';
+        html = `<span class="user-info">${user.avatar || '🐱'} ${user.display_name || user.username}</span>${adminLink} <button class="btn btn-ghost" id="logout-btn">退出</button>`;
+        document.getElementById('profile-link').style.display = '';
+        document.getElementById('projects-link').style.display = '';
+        document.getElementById('search-link').style.display = '';
+    } else {
+        html = `<button class="btn btn-primary" id="login-btn">登录</button>`;
+        document.getElementById('profile-link').style.display = 'none';
+        document.getElementById('projects-link').style.display = 'none';
+        document.getElementById('search-link').style.display = 'none';
+    }
+    bar.innerHTML = html;
+    if (user) {
+        document.getElementById('logout-btn').onclick = async function() {
+            await fetch('/users/logout', {method:'POST'});
+            window.location.reload();
+        };
+    } else {
+        document.getElementById('login-btn').onclick = openUserModal;
+    }
+}
+function openUserModal() {
+    document.getElementById('user-modal').style.display = 'block';
+    document.getElementById('user-form-message').textContent = '';
+}
+function closeUserModal() {
+    document.getElementById('user-modal').style.display = 'none';
+}
+document.addEventListener('DOMContentLoaded', async () => {
+    // 登录态检测
+    let user = null;
+    try {
+        const resp = await fetch('/users/me');
+        if (resp.ok) user = await resp.json();
+    } catch {}
+    renderUserBar(user);
+    // 弹窗逻辑
+    const userModal = document.getElementById('user-modal');
+    const userBackdrop = document.getElementById('user-modal-backdrop');
+    const btnClose = document.getElementById('btn-close-user-modal');
+    if (btnClose) btnClose.onclick = closeUserModal;
+    if (userBackdrop) userBackdrop.onclick = closeUserModal;
+    // 登录表单提交
+    document.getElementById('user-form').onsubmit = async function(e) {
+        e.preventDefault();
+        const username = document.getElementById('user-username').value.trim();
+        const password = document.getElementById('user-password').value.trim();
+        const messageEl = document.getElementById('user-form-message');
+        if (!username || !password) {
+            messageEl.textContent = '用户名和密码不能为空';
+            messageEl.classList.add('error');
+            return;
+        }
+        try {
+            const resp = await fetch('/users/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({username, password})
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.message || '登录失败');
+            messageEl.textContent = data.message;
+            messageEl.classList.remove('error');
+            setTimeout(() => { window.location.reload(); }, 600);
+        } catch (e) {
+            messageEl.textContent = e.message || '登录失败';
+            messageEl.classList.add('error');
+        }
+    };
+    // 只生成星星点缀，不做大海渐变
+    const starCount = 80;
+    const body = document.body;
+    for (let i = 0; i < starCount; i++) {
+        const star = document.createElement('div');
+        star.className = 'star';
+        const size = Math.random() * 2.2 + 0.8;
+        star.style.width = `${size}px`;
+        star.style.height = `${size}px`;
+        star.style.top = `${Math.random() * 100}vh`;
+        star.style.left = `${Math.random() * 100}vw`;
+        star.style.opacity = Math.random() * 0.5 + 0.5;
+        star.style.boxShadow = `0 0 ${Math.random()*8+2}px #fff`;
+        star.style.animationDelay = `${Math.random()*2}s`;
+        body.appendChild(star);
+    }
+});
+</script>
+</body>
+</html>

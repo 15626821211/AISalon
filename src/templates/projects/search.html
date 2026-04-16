@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+{% block title %}AI 项目搜索 - AI沙龙{% endblock %}
+{% block content %}
+<div class="page-container">
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <h1>🔍 AI 项目搜索</h1>
+        <a href="/projects/page" class="btn btn-outline btn-sm">← 返回知识库</a>
+    </div>
+    <p class="search-hint">用自然语言描述你的想法或需求，AI 会在 GitHub 上搜索相关项目。</p>
+
+    <!-- 搜索输入 -->
+    <div class="search-input-area">
+        <form id="search-form" class="search-form">
+            <input type="text" id="search-query" placeholder="例如：我想找一个基于 Python 的实时聊天框架..." autocomplete="off" required>
+            <button type="submit" class="btn btn-primary" id="search-btn">🚀 搜索</button>
+        </form>
+    </div>
+
+    <!-- AI 推荐 -->
+    <div id="ai-recommendation" class="ai-recommendation" style="display:none;">
+        <div class="ai-rec-header">🤖 AI 推荐</div>
+        <div class="ai-rec-content" id="ai-rec-content"></div>
+        <div class="ai-rec-keywords">搜索关键词：<code id="search-keywords"></code></div>
+    </div>
+
+    <!-- 搜索结果 -->
+    <div id="search-results" class="search-results" style="display:none;">
+        <h2 id="results-title">搜索结果</h2>
+        <div id="results-grid" class="events-grid"></div>
+    </div>
+
+    <!-- 加载中 -->
+    <div id="search-loading" class="search-loading" style="display:none;">
+        <div class="loading-spinner"></div>
+        <p>AI 正在理解你的需求并搜索 GitHub...</p>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+document.getElementById('search-form').onsubmit = async function(e) {
+    e.preventDefault();
+    const query = document.getElementById('search-query').value.trim();
+    if (!query) return;
+
+    const loading = document.getElementById('search-loading');
+    const resultsDiv = document.getElementById('search-results');
+    const recDiv = document.getElementById('ai-recommendation');
+    loading.style.display = '';
+    resultsDiv.style.display = 'none';
+    recDiv.style.display = 'none';
+
+    try {
+        const resp = await fetch('/projects/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query })
+        });
+        const data = await resp.json();
+        loading.style.display = 'none';
+
+        if (!resp.ok) {
+            alert(data.message || '搜索失败');
+            return;
+        }
+
+        // 显示 AI 推荐
+        if (data.recommendation) {
+            const rec = Array.isArray(data.recommendation) ? data.recommendation.join('\n') : String(data.recommendation);
+            document.getElementById('ai-rec-content').innerHTML = marked.parse(rec);
+            document.getElementById('search-keywords').textContent = data.keywords || '';
+            recDiv.style.display = '';
+        }
+
+        // 显示搜索结果
+        const grid = document.getElementById('results-grid');
+        if (data.results && data.results.length > 0) {
+            document.getElementById('results-title').textContent = `搜索结果（${data.results.length} 个项目）`;
+            grid.innerHTML = data.results.map(r => `
+                <div class="event-card project-card search-result-card">
+                    <div class="event-card-header">
+                        <a href="${r.url}" target="_blank" class="event-card-title">${r.name}</a>
+                        <span class="star-badge">⭐ ${r.stars.toLocaleString()}</span>
+                    </div>
+                    <div class="event-card-meta">
+                        <span>${r.language || '未知语言'}</span>
+                        <span>更新于 ${r.updated_at}</span>
+                    </div>
+                    <div class="event-card-desc">${r.description || '暂无描述'}</div>
+                    ${r.topics.length ? '<div class="event-tags">' + r.topics.map(t => '<span class="event-tag">' + t + '</span>').join('') + '</div>' : ''}
+                    <div class="event-card-actions">
+                        <a href="${r.url}" target="_blank" class="btn btn-outline btn-sm">查看仓库 ↗</a>
+                        <button class="btn btn-primary btn-sm add-btn" onclick="addProject(this, ${JSON.stringify(r).replace(/"/g, '&quot;')})">➕ 添加到知识库</button>
+                    </div>
+                </div>
+            `).join('');
+            resultsDiv.style.display = '';
+        } else {
+            grid.innerHTML = '<div class="empty-state">未找到相关项目，试试换个描述方式。</div>';
+            resultsDiv.style.display = '';
+        }
+    } catch (err) {
+        loading.style.display = 'none';
+        alert('请求失败: ' + err.message);
+    }
+};
+
+async function addProject(btn, repo) {
+    btn.disabled = true;
+    btn.textContent = '添加中...';
+    try {
+        const resp = await fetch('/projects/search/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: repo.name,
+                url: repo.url,
+                language: repo.language,
+                topics: repo.topics
+            })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            btn.textContent = '✅ 已添加';
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-ghost');
+        } else if (resp.status === 409) {
+            btn.textContent = '⚠️ 已存在';
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-ghost');
+        } else {
+            btn.textContent = '❌ 失败';
+            btn.disabled = false;
+            alert(data.message || '添加失败');
+        }
+    } catch (err) {
+        btn.textContent = '❌ 失败';
+        btn.disabled = false;
+        alert('请求失败: ' + err.message);
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台</title>
+</head>
+<body>
+    {% extends 'base.html' %}
+    {% block title %}管理后台{% endblock %}
+    {% block content %}
+    <div class="event-detail-container">
+        <h1 class="page-title" style="margin-bottom:24px;">🛠️ 管理后台</h1>
+
+        <!-- 用户管理 -->
+        <div class="detail-panel" style="margin-bottom:24px;">
+            <div class="detail-panel-header">
+                <h2 class="detail-panel-title">👤 用户管理</h2>
+                <button class="btn btn-primary btn-sm" id="btn-create-user">+ 创建用户</button>
+            </div>
+            <div id="create-user-form" style="display:none;margin-bottom:16px;">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+                    <div class="detail-form-row" style="flex:1;min-width:120px;">
+                        <label style="font-size:12px;color:#94a3b8;">账号</label>
+                        <input type="text" id="new-username" placeholder="账号" style="width:100%;">
+                    </div>
+                    <div class="detail-form-row" style="flex:1;min-width:120px;">
+                        <label style="font-size:12px;color:#94a3b8;">密码</label>
+                        <input type="password" id="new-password" placeholder="密码" style="width:100%;">
+                    </div>
+                    <div class="detail-form-row" style="flex:1;min-width:120px;">
+                        <label style="font-size:12px;color:#94a3b8;">姓名</label>
+                        <input type="text" id="new-display-name" placeholder="姓名" style="width:100%;">
+                    </div>
+                    <div class="detail-form-row" style="flex:1;min-width:180px;">
+                        <label style="font-size:12px;color:#94a3b8;">邮箱</label>
+                        <input type="email" id="new-email" placeholder="邮箱" style="width:100%;">
+                    </div>
+                    <button class="btn btn-primary btn-sm" id="btn-submit-user">保存</button>
+                </div>
+                <span id="create-user-msg" class="form-message" style="margin-top:6px;display:block;"></span>
+            </div>
+            <table class="admin-table" id="users-table">
+                <thead><tr><th>ID</th><th>账号</th><th>姓名</th><th>邮箱</th><th>头像</th><th>操作</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <!-- 用户组管理 -->
+        <div class="detail-panel">
+            <div class="detail-panel-header">
+                <h2 class="detail-panel-title">👥 用户组管理</h2>
+                <button class="btn btn-primary btn-sm" id="btn-create-group">+ 创建组</button>
+            </div>
+            <div id="create-group-form" style="display:none;margin-bottom:16px;">
+                <div style="display:flex;gap:8px;align-items:flex-end;">
+                    <div class="detail-form-row" style="flex:1;">
+                        <input type="text" id="new-group-name" placeholder="组名" style="width:100%;">
+                    </div>
+                    <div class="detail-form-row" style="flex:2;">
+                        <input type="text" id="new-group-desc" placeholder="描述（可选）" style="width:100%;">
+                    </div>
+                    <button class="btn btn-primary btn-sm" id="btn-submit-group">保存</button>
+                </div>
+                <span id="create-group-msg" class="form-message" style="margin-top:6px;display:block;"></span>
+            </div>
+            <div id="groups-list"></div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // ===== 用户管理 =====
+        let allUsers = [];
+        async function loadUsers() {
+            const resp = await fetch('/users/manage/users');
+            allUsers = await resp.json();
+            const tbody = document.querySelector('#users-table tbody');
+            tbody.innerHTML = allUsers.map(u => `
+                <tr>
+                    <td>${u.id}</td>
+                    <td>${u.username}</td>
+                    <td>${u.display_name || '-'}</td>
+                    <td>${u.email || '-'}</td>
+                    <td>${u.avatar || '🐱'}</td>
+                    <td>
+                        ${u.is_admin ? '<span style="color:#a5b4fc;">管理员</span>' :
+                        `<button class="btn btn-ghost btn-sm" onclick="deleteUser(${u.id})">删除</button>`}
+                    </td>
+                </tr>
+            `).join('');
+        }
+        loadUsers();
+
+        document.getElementById('btn-create-user').onclick = () => {
+            const f = document.getElementById('create-user-form');
+            f.style.display = f.style.display === 'none' ? '' : 'none';
+        };
+        document.getElementById('btn-submit-user').onclick = async () => {
+            const msg = document.getElementById('create-user-msg');
+            const payload = {
+                username: document.getElementById('new-username').value.trim(),
+                password: document.getElementById('new-password').value.trim(),
+                display_name: document.getElementById('new-display-name').value.trim(),
+                email: document.getElementById('new-email').value.trim(),
+            };
+            if (!payload.username || !payload.password || !payload.display_name || !payload.email) {
+                msg.textContent = '所有字段均不能为空';
+                msg.classList.add('error');
+                return;
+            }
+            const resp = await fetch('/users/register', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                msg.textContent = '创建成功';
+                msg.classList.remove('error');
+                document.getElementById('new-username').value = '';
+                document.getElementById('new-password').value = '';
+                document.getElementById('new-display-name').value = '';
+                document.getElementById('new-email').value = '';
+                loadUsers();
+            } else {
+                msg.textContent = data.message || '创建失败';
+                msg.classList.add('error');
+            }
+        };
+        window.deleteUser = async function(id) {
+            if (!confirm('确定要删除该用户吗？')) return;
+            await fetch(`/users/manage/users/${id}`, {method:'DELETE'});
+            loadUsers();
+        };
+
+        // ===== 用户组管理 =====
+        async function loadGroups() {
+            const resp = await fetch('/users/groups');
+            const groups = await resp.json();
+            const container = document.getElementById('groups-list');
+            if (groups.length === 0) {
+                container.innerHTML = '<div style="color:#94a3b8;font-size:14px;">暂无用户组</div>';
+                return;
+            }
+            container.innerHTML = groups.map(g => `
+                <div class="admin-group-card" data-gid="${g.id}">
+                    <div class="detail-panel-header">
+                        <h3 style="font-size:15px;color:#e2e8f0;">${g.name} <span style="color:#94a3b8;font-size:12px;">${g.description || ''}</span></h3>
+                        <div>
+                            <span class="detail-panel-badge">${g.member_count}人</span>
+                            <button class="btn btn-ghost btn-sm" onclick="deleteGroup(${g.id})">删除组</button>
+                        </div>
+                    </div>
+                    <div class="group-members" id="group-members-${g.id}"></div>
+                    <div style="margin-top:8px;display:flex;gap:8px;">
+                        <select id="group-add-user-${g.id}" class="detail-form-select" style="flex:1;"></select>
+                        <button class="btn btn-primary btn-sm" onclick="addMember(${g.id})">添加成员</button>
+                    </div>
+                </div>
+            `).join('');
+            for (const g of groups) {
+                loadGroupMembers(g.id);
+                populateUserSelect(g.id);
+            }
+        }
+        loadGroups();
+
+        async function loadGroupMembers(gid) {
+            const resp = await fetch(`/users/groups/${gid}/members`);
+            const members = await resp.json();
+            const el = document.getElementById(`group-members-${gid}`);
+            if (members.length === 0) {
+                el.innerHTML = '<div style="color:#94a3b8;font-size:13px;">暂无成员</div>';
+            } else {
+                el.innerHTML = members.map(m => `
+                    <span class="admin-member-chip">${m.avatar || '🐱'} ${m.display_name || m.username}
+                        <button class="btn-chip-remove" onclick="removeMember(${gid}, ${m.id})">✕</button>
+                    </span>
+                `).join('');
+            }
+        }
+
+        function populateUserSelect(gid) {
+            const sel = document.getElementById(`group-add-user-${gid}`);
+            sel.innerHTML = allUsers.filter(u => !u.is_admin).map(u => `<option value="${u.id}">${u.display_name || u.username}</option>`).join('');
+        }
+
+        window.addMember = async function(gid) {
+            const sel = document.getElementById(`group-add-user-${gid}`);
+            const uid = sel.value;
+            if (!uid) return;
+            await fetch(`/users/groups/${gid}/members`, {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({user_id: parseInt(uid)})
+            });
+            loadGroups();
+        };
+        window.removeMember = async function(gid, uid) {
+            await fetch(`/users/groups/${gid}/members/${uid}`, {method:'DELETE'});
+            loadGroups();
+        };
+        window.deleteGroup = async function(gid) {
+            if (!confirm('确定要删除该用户组吗？')) return;
+            await fetch(`/users/groups/${gid}`, {method:'DELETE'});
+            loadGroups();
+        };
+
+        document.getElementById('btn-create-group').onclick = () => {
+            const f = document.getElementById('create-group-form');
+            f.style.display = f.style.display === 'none' ? '' : 'none';
+        };
+        document.getElementById('btn-submit-group').onclick = async () => {
+            const msg = document.getElementById('create-group-msg');
+            const name = document.getElementById('new-group-name').value.trim();
+            const desc = document.getElementById('new-group-desc').value.trim();
+            if (!name) { msg.textContent = '组名不能为空'; msg.classList.add('error'); return; }
+            const resp = await fetch('/users/groups', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({name, description: desc})
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                msg.textContent = '创建成功';
+                msg.classList.remove('error');
+                document.getElementById('new-group-name').value = '';
+                document.getElementById('new-group-desc').value = '';
+                loadGroups();
+            } else {
+                msg.textContent = data.message || '创建失败';
+                msg.classList.add('error');
+            }
+        };
+    });
+    </script>
+    {% endblock %}
+</body>
+</html>

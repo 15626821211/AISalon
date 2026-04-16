@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+{% block title %}个人中心 - AI沙龙{% endblock %}
+{% block content %}
+<div class="page-container">
+    <!-- 用户信息卡片 -->
+    <div class="profile-card">
+        <div class="profile-avatar" id="current-avatar" onclick="document.getElementById('avatar-picker').style.display=document.getElementById('avatar-picker').style.display==='none'?'flex':'none'" title="点击更换头像">{{ user.avatar or '🐱' }}</div>
+        <div id="avatar-picker" class="avatar-picker" style="display:none;">
+            <div class="avatar-picker-title">选择头像</div>
+            <div class="avatar-picker-grid">
+                <span class="avatar-option" onclick="setAvatar('🐱')">🐱</span>
+                <span class="avatar-option" onclick="setAvatar('🐶')">🐶</span>
+                <span class="avatar-option" onclick="setAvatar('🐻')">🐻</span>
+                <span class="avatar-option" onclick="setAvatar('🐼')">🐼</span>
+                <span class="avatar-option" onclick="setAvatar('🦊')">🦊</span>
+                <span class="avatar-option" onclick="setAvatar('🐰')">🐰</span>
+                <span class="avatar-option" onclick="setAvatar('🦉')">🦉</span>
+                <span class="avatar-option" onclick="setAvatar('🐧')">🐧</span>
+                <span class="avatar-option" onclick="setAvatar('🦄')">🦄</span>
+                <span class="avatar-option" onclick="setAvatar('🐲')">🐲</span>
+                <span class="avatar-option" onclick="setAvatar('🤖')">🤖</span>
+                <span class="avatar-option" onclick="setAvatar('👽')">👽</span>
+                <span class="avatar-option" onclick="setAvatar('🧑‍🚀')">🧑‍🚀</span>
+                <span class="avatar-option" onclick="setAvatar('🧙')">🧙</span>
+                <span class="avatar-option" onclick="setAvatar('🧚')">🧚</span>
+                <span class="avatar-option" onclick="setAvatar('🌟')">🌟</span>
+            </div>
+        </div>
+        <div class="profile-info-block">
+            <h1>{{ user.username }}</h1>
+            <div class="profile-stats">
+                <div class="stat-item">
+                    <span class="stat-num">{{ created_events|length }}</span>
+                    <span class="stat-label">发起活动</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-num">{{ signups|length }}</span>
+                    <span class="stat-label">报名活动</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-num">{{ my_projects|length }}</span>
+                    <span class="stat-label">录入项目</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-num">{{ liked_projects|length }}</span>
+                    <span class="stat-label">点赞项目</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 导航 -->
+    <div class="knowledge-tabs" style="margin-top:28px;">
+        <button class="tab-btn active" onclick="switchProfileTab('my-events')">🎪 我发起的活动</button>
+        <button class="tab-btn" onclick="switchProfileTab('my-participated')">📝 我参与的活动</button>
+        <button class="tab-btn" onclick="switchProfileTab('my-projects')">📚 我录入的项目</button>
+        <button class="tab-btn" onclick="switchProfileTab('my-likes')">❤️ 我点赞的项目</button>
+    </div>
+
+    <!-- 我发起的活动 -->
+    <div class="profile-section" id="tab-my-events">
+        {% if created_events %}
+        <div class="events-grid">
+            {% for event in created_events %}
+            <div class="event-card">
+                <div class="event-card-header">
+                    <a href="/events/{{ event.id }}/page" class="event-card-title">{{ event.title }}</a>
+                </div>
+                <div class="event-card-meta">
+                    <span>📅 {{ event.date }}</span>
+                    <span>📍 {{ event.location or '线上' }}</span>
+                </div>
+                <div class="event-card-desc">{{ (event.description or '')[:80] }}</div>
+                <div class="event-card-actions">
+                    <a href="/events/{{ event.id }}/page" class="btn btn-outline btn-sm">查看详情</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">暂无发起的活动</div>
+        {% endif %}
+    </div>
+
+    <!-- 我参与的活动 -->
+    <div class="profile-section" id="tab-my-participated" style="display:none;">
+        {% if participated_events %}
+        <div class="events-grid">
+            {% for event in participated_events %}
+            <div class="event-card">
+                <div class="event-card-header">
+                    <a href="/events/{{ event.id }}/page" class="event-card-title">{{ event.title }}</a>
+                </div>
+                <div class="event-card-meta">
+                    <span>📍 {{ event.location or '线上' }}</span>
+                </div>
+                <div class="event-card-actions">
+                    <a href="/events/{{ event.id }}/page" class="btn btn-outline btn-sm">查看详情</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">暂无参与的活动</div>
+        {% endif %}
+    </div>
+
+    <!-- 我录入的项目 -->
+    <div class="profile-section" id="tab-my-projects" style="display:none;">
+        {% if my_projects %}
+        <div class="events-grid">
+            {% for p in my_projects %}
+            <div class="event-card project-card">
+                <div class="event-card-header">
+                    <a href="/projects/{{ p.id }}/page" class="event-card-title">{{ p.name }}</a>
+                    <span class="status-badge status-{{ p.status }}">
+                        {% if p.status == 'analyzed' %}已分析{% elif p.status == 'partial' %}分析不完整{% else %}待分析{% endif %}
+                    </span>
+                </div>
+                <div class="event-card-meta">
+                    <span>👥 {{ p.team or '未填写' }}</span>
+                </div>
+                <div class="event-card-desc">{{ (p.summary or '暂无概要')[:80] }}</div>
+                {% if p.tags %}
+                <div class="event-tags">
+                    {% for tag in p.tags %}
+                    <span class="event-tag">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                <div class="event-card-actions">
+                    <a href="/projects/{{ p.id }}/page" class="btn btn-outline btn-sm">查看详情</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">暂无录入的项目</div>
+        {% endif %}
+    </div>
+
+    <!-- 我点赞的项目 -->
+    <div class="profile-section" id="tab-my-likes" style="display:none;">
+        {% if liked_projects %}
+        <div class="events-grid">
+            {% for p in liked_projects %}
+            <div class="event-card project-card">
+                <div class="event-card-header">
+                    <a href="/projects/{{ p.id }}/page" class="event-card-title">{{ p.name }}</a>
+                </div>
+                <div class="event-card-meta">
+                    <span>👥 {{ p.team or '未填写' }}</span>
+                </div>
+                <div class="event-card-desc">{{ (p.summary or '暂无概要')[:80] }}</div>
+                <div class="event-card-actions">
+                    <a href="/projects/{{ p.id }}/page" class="btn btn-outline btn-sm">查看详情</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">暂无点赞的项目</div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function switchProfileTab(name) {
+    document.querySelectorAll('.profile-section').forEach(s => s.style.display = 'none');
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).style.display = '';
+    event.target.classList.add('active');
+}
+
+async function setAvatar(emoji) {
+    try {
+        const resp = await fetch('/users/avatar', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ avatar: emoji })
+        });
+        if (resp.ok) {
+            document.getElementById('current-avatar').textContent = emoji;
+            document.getElementById('avatar-picker').style.display = 'none';
+        }
+    } catch (e) {}
+}
+</script>
+{% endblock %}
