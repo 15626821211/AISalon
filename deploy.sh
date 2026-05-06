@@ -1,5 +1,6 @@
 #!/bin/bash
 # AISalon 一键部署脚本
+# 前置要求: CentOS 7/8, root 权限, 已安装 Docker 和 Docker Compose
 # 使用方式: bash deploy.sh
 
 set -e
@@ -8,35 +9,21 @@ echo "========== AISalon 部署 =========="
 
 # 检查 Docker
 if ! command -v docker &> /dev/null; then
-    echo "❌ Docker 未安装，正在安装（阿里云镜像）..."
-    curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo \
-        -o /etc/yum.repos.d/docker-ce.repo 2>/dev/null || true
-    curl -fsSL https://get.docker.com | sh -s -- --mirror Aliyun
-    # 配置 Docker 镜像加速
-    mkdir -p /etc/docker
-    cat > /etc/docker/daemon.json <<EOF
-{
-  "registry-mirrors": ["https://mirror.ccs.tencentyun.com", "https://docker.mirrors.ustc.edu.cn"]
-}
-EOF
-    systemctl enable docker && systemctl start docker
-    echo "✅ Docker 已安装"
+    echo "❌ 请先安装 Docker，参考部署文档"
+    exit 1
 fi
 
-# 检查 docker-compose
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    echo "❌ Docker Compose 未安装，正在安装..."
-    curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
-        -o /usr/local/bin/docker-compose
-    chmod +x /usr/local/bin/docker-compose
-    echo "✅ Docker Compose 已安装"
+# 检查 docker compose
+if ! docker compose version &> /dev/null; then
+    echo "❌ 请先安装 Docker Compose，参考部署文档"
+    exit 1
 fi
 
 # 检查 .env.production
 if [ ! -f .env.production ]; then
-    echo "⚠️  未找到 .env.production，从模板创建..."
     cp .env.production.example .env.production
-    echo "📝 请编辑 .env.production 填入真实配置后重新运行此脚本"
+    echo "⚠️  已创建 .env.production，请编辑填入真实配置后重新运行"
+    echo "   vi .env.production"
     exit 1
 fi
 
