@@ -8,8 +8,17 @@ echo "========== AISalon 部署 =========="
 
 # 检查 Docker
 if ! command -v docker &> /dev/null; then
-    echo "❌ Docker 未安装，正在安装..."
-    curl -fsSL https://get.docker.com | sh
+    echo "❌ Docker 未安装，正在安装（阿里云镜像）..."
+    curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo \
+        -o /etc/yum.repos.d/docker-ce.repo 2>/dev/null || true
+    curl -fsSL https://get.docker.com | sh -s -- --mirror Aliyun
+    # 配置 Docker 镜像加速
+    mkdir -p /etc/docker
+    cat > /etc/docker/daemon.json <<EOF
+{
+  "registry-mirrors": ["https://mirror.ccs.tencentyun.com", "https://docker.mirrors.ustc.edu.cn"]
+}
+EOF
     systemctl enable docker && systemctl start docker
     echo "✅ Docker 已安装"
 fi
