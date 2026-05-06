@@ -106,6 +106,7 @@ class Project(db.Model):
     key_code_snippets = db.Column(db.JSON, default=list)
     lessons_learned = db.Column(db.Text)
     usage_guide = db.Column(db.Text)
+    directory_structure = db.Column(db.Text)
     diagrams = db.Column(db.JSON, default=list)
     status = db.Column(db.String(20), default='draft')
     analyzed_at = db.Column(db.DateTime, nullable=True)

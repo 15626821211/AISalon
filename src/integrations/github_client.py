@@ -13,14 +13,15 @@ PRIORITY_DIRS = ['docs', 'doc', 'documentation']
 CONFIG_FILES = ['package.json', 'pyproject.toml', 'requirements.txt', 'Dockerfile',
                 'docker-compose.yml', 'setup.py', 'setup.cfg', 'Cargo.toml', 'go.mod',
                 'pom.xml', 'build.gradle', 'Makefile', '.env.example']
-CODE_DIRS = ['src', 'app', 'lib', 'core', 'main', 'api', 'server', 'backend', 'frontend']
+CODE_DIRS = ['src', 'app', 'lib', 'core', 'main', 'api', 'server', 'backend', 'frontend',
+             'modules', 'service', 'services', 'controller', 'domain', 'common', 'utils']
 SKIP_DIRS = {'node_modules', '.git', '__pycache__', '.venv', 'venv', 'env',
              'dist', 'build', '.next', '.nuxt', 'target', 'vendor', '.idea', '.vscode'}
 SKIP_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.webp',
                    '.woff', '.woff2', '.ttf', '.eot', '.mp3', '.mp4', '.zip',
                    '.tar', '.gz', '.exe', '.dll', '.so', '.pyc', '.class',
                    '.lock', '.min.js', '.min.css', '.map'}
-MAX_CONTENT_SIZE = 100 * 1024  # 100KB
+MAX_CONTENT_SIZE = 200 * 1024  # 200KB
 
 
 def parse_repo_url(url: str) -> dict:
@@ -298,8 +299,8 @@ def select_files(tree: list) -> list:
         # 配置文件
         elif filename in CONFIG_FILES:
             configs.append(path)
-        # 核心代码目录
-        elif any(path.startswith(d + '/') for d in CODE_DIRS):
+        # 核心代码目录（顶层匹配或任意层级含 src/）
+        elif any(path.startswith(d + '/') for d in CODE_DIRS) or '/src/' in path:
             code.append(path)
         # 根目录 .md 文件
         elif '/' not in path and path.endswith('.md'):
@@ -307,14 +308,49 @@ def select_files(tree: list) -> list:
         else:
             other.append(path)
 
-    # 按优先级合并，code 和 other 截断
-    selected = readme + docs[:20] + configs + code[:50] + other[:20]
+    # 对 code 列表进行智能排序：优先 Controller/Service/核心文件
+    def _code_priority(p):
+        lower = p.lower()
+        if 'controller' in lower or 'resource' in lower:
+            return 0
+        if 'service' in lower and 'impl' not in lower:
+            return 1
+        if 'service' in lower:
+            return 2
+        if 'config' in lower or 'application' in lower:
+            return 3
+        if 'model' in lower or 'entity' in lower or 'dto' in lower:
+            return 4
+        if 'repository' in lower or 'dao' in lower or 'mapper' in lower:
+            return 5
+        return 6
+    code.sort(key=_code_priority)
+
+    # 按优先级合并：README → 配置 → 代码 → 文档 → 其他
+    selected = readme + configs + code[:50] + docs[:15] + other[:10]
     return selected
 
 
 def _build_repo_content(tree: list, content_loader) -> dict:
     """基于文件树和内容加载器组装分析输入。"""
-    tree_summary = '\n'.join(item['path'] for item in tree[:200])
+    # 构建目录结构摘要：提取所有唯一目录（至多3层深度）+ 关键文件
+    dirs = set()
+    root_files = []
+    for item in tree:
+        path = item.get('path', '')
+        parts = path.split('/')
+        # 收集各层级目录
+        for i in range(1, min(len(parts), 4)):
+            dirs.add('/'.join(parts[:i]) + '/')
+        # 收集根文件和浅层关键文件
+        if len(parts) <= 2:
+            root_files.append(path)
+
+    # 组合：排序后的目录 + 根文件 + 前 100 个文件路径作为补充
+    sorted_dirs = sorted(dirs)
+    file_paths = [item['path'] for item in tree[:100]]
+    tree_summary = '\n'.join(sorted_dirs) + '\n---\n' + '\n'.join(root_files[:50]) + '\n---\n' + '\n'.join(file_paths)
+
     selected_paths = select_files(tree)
 
     files = []

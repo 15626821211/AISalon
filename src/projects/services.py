@@ -104,6 +104,7 @@ class ProjectService:
         project.key_code_snippets = result.get('key_code_snippets', [])
         project.lessons_learned = _str(result.get('lessons_learned', ''))
         project.usage_guide = _str(result.get('usage_guide', ''))
+        project.directory_structure = _str(result.get('directory_structure', ''))
         project.diagrams = result.get('diagrams', [])
         project.status = result.get('status', 'partial')
         project.analyzed_at = datetime.utcnow()
@@ -154,6 +155,7 @@ class ProjectService:
             'key_code_snippets': project.key_code_snippets or [],
             'lessons_learned': project.lessons_learned,
             'usage_guide': project.usage_guide,
+            'directory_structure': project.directory_structure,
             'diagrams': project.diagrams or [],
             'status': project.status,
             'analyzed_at': project.analyzed_at.isoformat() if project.analyzed_at else None,

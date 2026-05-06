@@ -1,20 +1,31 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Tech stack: Python 3.12, Flask 2.x, SQLAlchemy, PyMySQL, Pandas, Jinja2
+  Database: MySQL (localhost:3306/ai_salon)
+  AI: Azure OpenAI (gpt-4o)
+  Domain: AI沙龙活动平台 - 用户注册/登录、事件管理、项目知识库、数据分析
+  Conventions:
+    - Blueprint别名：events_bp, users_bp, projects_bp
+    - 路由前缀：/events, /users, /projects
+    - API返回JSON，状态码遵循REST
+    - 注释使用中文（项目既定风格）
+    - 测试文件在 tests/ 目录
+  Structure:
+    - src/app.py: Flask入口, create_app()
+    - src/config.py: 配置类, 通过 .env 加载
+    - src/models.py: SQLAlchemy 模型 (User, Event, Project, etc.)
+    - src/events/: 事件模块 (models, routes, services)
+    - src/users/: 用户模块 (models, routes, services)
+    - src/projects/: 项目知识库模块 (routes, services, ai_analyzer)
+    - src/analytics/: 数据分析模块 (Pandas)
+    - src/templates/: Jinja2 模板
+    - src/static/: 静态资源
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+rules:
+  proposal:
+    - 使用中文撰写
+    - 简明扼要，500字以内
+  tasks:
+    - 任务粒度控制在2小时以内
+    - 按模块分组

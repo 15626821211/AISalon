@@ -197,6 +197,50 @@ def step6_lessons_learned(summary: str, design: str, tech: str, architecture: st
     return _call_llm(prompt, SYSTEM_PROMPT)
 
 
+def step6b_directory_structure(tree_summary: str, readme_content: str) -> str:
+    """Step 6b: 生成带注释的目录结构说明。"""
+    prompt = f"""请基于以下项目的目录结构信息和 README，生成一份完整的带注释的目录结构说明。
+
+要求：
+1. 用树形结构（类似 `tree` 命令输出）展示**所有一级和二级目录**，以及重要的三级目录
+2. 每个目录/文件后面用 `#` 注释说明其作用（根据目录名推断功能）
+3. 忽略不重要的文件（如 .gitignore、LICENSE、__pycache__、node_modules 等）
+4. **确保所有模块/子项目目录都被列出，不要遗漏任何一级或二级目录**
+5. 对于 Java 多模块项目，每个模块都要列出其 src/main/java 下的主要包
+6. 先展示完整的树形结构，再用 Markdown 对每个一级目录做 1-2 句功能说明
+
+示例格式：
+```
+project/
+├── module-a/              # 模块A - 用户服务
+│   ├── src/main/java/     # Java 源代码
+│   │   └── com/xxx/       # 核心业务包
+│   └── src/main/resources/ # 配置文件
+├── module-b/              # 模块B - 订单服务
+│   ├── src/main/java/
+│   └── pom.xml
+├── common/                # 公共模块
+└── pom.xml                # Maven 父 POM
+```
+
+## 模块说明
+- **module-a/**: 用户服务模块，负责用户注册、登录、认证等功能
+- **module-b/**: 订单服务模块，处理订单创建、支付、退款等业务
+- **common/**: 公共工具类和通用组件
+
+---
+目录结构信息（第一部分为所有目录，第二部分为根文件，第三部分为示例文件路径）:
+{tree_summary[:8000]}
+
+---
+README:
+{readme_content[:3000]}
+
+请确保覆盖所有一级和二级目录，用 Markdown 格式回答。"""
+
+    return _call_llm(prompt, SYSTEM_PROMPT)
+
+
 def step7_diagrams(summary: str, design: str, tech: str, architecture: str, tree_summary: str) -> list:
     """Step 7: 生成 Mermaid 可视化图表（设计思路图、架构图、流程图、技术栈图）。"""
     prompt = f"""你是一个擅长用 Mermaid 画图的技术专家。请基于以下项目分析结果，生成 4 张 Mermaid 图表代码。
@@ -208,10 +252,16 @@ def step7_diagrams(summary: str, design: str, tech: str, architecture: str, tree
 4. **技术栈图**（tech）：用 `graph LR` 展示技术选型分类（语言、框架、数据库、工具等）
 
 注意：
-- 每张图代码必须是合法的 Mermaid 语法，可以直接渲染
-- 节点文字用中文
-- 保持简洁，每张图不超过 20 个节点
-- 不要在 Mermaid 代码中使用括号字符如 ( ) [ ]，请用引号包裹节点文字
+- 必须兼容 Mermaid v10.9.1 语法
+- 节点 ID 用英文字母（如 A, B, C 或 api, db, web）
+- 节点文字用中文，放在方括号内，例如: A[用户请求] --> B[API网关]
+- 节点文字中禁止使用以下字符: 双引号 单引号 反引号 圆括号 方括号 花括号 竖线 尖括号 分号 和号 井号
+- 如果需要这些特殊字符，用中文替代（如"数据库/缓存"改为"数据库和缓存"）
+- 边标签用 -->|标签文字| 语法，标签中也不能有特殊字符
+- subgraph 标题只用简单中文，不含特殊字符
+- 保持简洁，每张图 8-15 个节点
+- 不要使用 ::: 样式语法
+- 不用 direction 声明（用顶层 graph TD/LR 控制方向）
 
 ---
 项目概览: {summary[:1500]}
@@ -222,10 +272,10 @@ def step7_diagrams(summary: str, design: str, tech: str, architecture: str, tree
 
 请以 JSON 数组格式返回，每个元素包含 title（图表标题）、type（diagram类型）、mermaid（Mermaid 代码）：
 [
-  {{"title": "设计思路图", "type": "design", "mermaid": "graph TD\\n  A[\\"..\\"] --> B[\\"..\\"]"}},
-  {{"title": "系统架构图", "type": "architecture", "mermaid": "graph TD\\n  ..."}},
-  {{"title": "业务流程图", "type": "flow", "mermaid": "flowchart LR\\n  ..."}},
-  {{"title": "技术栈总览", "type": "tech", "mermaid": "graph LR\\n  ..."}}
+  {{"title": "设计思路图", "type": "design", "mermaid": "graph TD\\n  A[核心设计] --> B[模块拆分]\\n  A --> C[数据流]"}},
+  {{"title": "系统架构图", "type": "architecture", "mermaid": "graph TD\\n  A[前端] --> B[API层]\\n  B --> C[数据库]"}},
+  {{"title": "业务流程图", "type": "flow", "mermaid": "graph LR\\n  A[开始] --> B[处理] --> C[结束]"}},
+  {{"title": "技术栈总览", "type": "tech", "mermaid": "graph LR\\n  A[后端] --> B[Spring Boot]\\n  A --> C[MySQL]"}}
 ]"""
 
     result = _call_llm(prompt, SYSTEM_PROMPT)
@@ -274,6 +324,7 @@ def analyze_project(repo_content: dict) -> dict:
         'key_code_snippets': [],
         'lessons_learned': '',
         'usage_guide': '',
+        'directory_structure': '',
         'diagrams': [],
         'status': 'partial',
     }
@@ -308,6 +359,9 @@ def analyze_project(repo_content: dict) -> dict:
             result['summary'], result['design_thinking'],
             result['tech_stack'], result['architecture']
         )
+
+        # Step 6b: 目录结构说明
+        result['directory_structure'] = step6b_directory_structure(tree_summary, readme_content)
 
         # Step 7: 生成 Mermaid 可视化图表
         result['diagrams'] = step7_diagrams(

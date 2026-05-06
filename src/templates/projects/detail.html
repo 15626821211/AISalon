@@ -1,9 +1,9 @@
 {% extends 'base.html' %}
 {% block title %}{{ project.name }} - 项目知识卡片{% endblock %}
 {% block content %}
-<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script>mermaid.initialize({startOnLoad: false, theme: 'dark', themeVariables: {primaryColor: '#4f46e5', primaryTextColor: '#e2e8f0', lineColor: '#94a3b8', fontSize: '14px'}});</script>
+<script>mermaid.initialize({startOnLoad: false, securityLevel: 'loose', theme: 'dark', themeVariables: {primaryColor: '#4f46e5', primaryTextColor: '#e2e8f0', lineColor: '#94a3b8', fontSize: '14px'}});</script>
 <div class="page-container">
     <a href="/projects/page" class="back-link">← 返回项目列表</a>
 
@@ -49,6 +49,7 @@
         <button class="tab-btn" onclick="switchTab('tech')">🔧 技术选型</button>
         <button class="tab-btn" onclick="switchTab('architecture')">🏗️ 架构</button>
         <button class="tab-btn" onclick="switchTab('code')">💡 核心代码</button>
+        <button class="tab-btn" onclick="switchTab('directory')">📂 目录结构</button>
         <button class="tab-btn" onclick="switchTab('guide')">📖 部署指南</button>
         <button class="tab-btn" onclick="switchTab('lessons')">🎯 经验教训</button>
     </div>
@@ -70,7 +71,7 @@
                 {% if d.type == 'design' %}
                 <div class="diagram-card">
                     <h3>{{ d.title or '设计思路图' }}</h3>
-                    <div class="mermaid">{{ d.mermaid }}</div>
+                    <div class="mermaid-diagram"><script type="text/mermaid-source">{{ d.mermaid|safe }}</script></div>
                 </div>
                 {% endif %}
             {% endfor %}
@@ -85,7 +86,7 @@
                 {% if d.type == 'tech' %}
                 <div class="diagram-card">
                     <h3>{{ d.title or '技术栈图' }}</h3>
-                    <div class="mermaid">{{ d.mermaid }}</div>
+                    <div class="mermaid-diagram"><script type="text/mermaid-source">{{ d.mermaid|safe }}</script></div>
                 </div>
                 {% endif %}
             {% endfor %}
@@ -100,7 +101,7 @@
                 {% if d.type == 'architecture' %}
                 <div class="diagram-card">
                     <h3>{{ d.title or '架构图' }}</h3>
-                    <div class="mermaid">{{ d.mermaid }}</div>
+                    <div class="mermaid-diagram"><script type="text/mermaid-source">{{ d.mermaid|safe }}</script></div>
                 </div>
                 {% endif %}
             {% endfor %}
@@ -121,6 +122,11 @@
         {% else %}
             <div class="knowledge-content">暂无核心代码解读</div>
         {% endif %}
+    </div>
+
+    <div class="knowledge-section" id="tab-directory" style="display:none;">
+        <h2>📂 目录结构</h2>
+        <div class="knowledge-content markdown-body" data-md="{{ project.directory_structure|e }}">{{ project.directory_structure or '暂无内容' }}</div>
     </div>
 
     <div class="knowledge-section" id="tab-guide" style="display:none;">
@@ -231,17 +237,34 @@ function switchTab(name) {
 async function renderMermaidInTab(tabId) {
     const tab = document.getElementById(tabId);
     if (!tab) return;
-    const elements = tab.querySelectorAll('.mermaid:not([data-processed])');
+    const elements = tab.querySelectorAll('.mermaid-diagram:not([data-processed])');
+    let idx = 0;
     for (const el of elements) {
+        const scriptEl = el.querySelector('script[type="text/mermaid-source"]');
+        if (!scriptEl) continue;
+        let code = scriptEl.textContent.trim();
+        if (!code) continue;
+
+        // 修复字面量 \n（JSON 遗留）
+        code = code.replace(/\\n/g, '\n');
+        code = code.replace(/\r\n/g, '\n');
+
+        // v10兼容：方括号节点内的圆括号 [前端(Vue.js)] → [前端 - Vue.js]
+        code = code.replace(/\[([^\]]*?)\(([^)]*?)\)([^\]]*?)\]/g, '[$1 - $2$3]');
+        code = code.replace(/\[([^\]]*?)\(([^)]*?)\)([^\]]*?)\]/g, '[$1 - $2$3]');
+
+        const id = 'mmd-' + tabId + '-' + idx++;
         try {
-            const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
-            const {svg} = await mermaid.render(id, el.textContent.trim());
+            const result = await mermaid.render(id, code);
+            const svg = typeof result === 'string' ? result : result.svg;
             el.innerHTML = svg;
-            el.setAttribute('data-processed', 'true');
         } catch (e) {
-            el.innerHTML = '<div style="color:#f87171;padding:12px;">图表渲染失败，Mermaid 语法可能有误。<pre style=\"font-size:12px;margin-top:8px;color:#94a3b8;\">' + el.textContent.substring(0, 300) + '</pre></div>';
-            el.setAttribute('data-processed', 'true');
+            console.warn('Mermaid render failed:', id, e.message, '\n' + code.substring(0, 200));
+            const orphan = document.getElementById('d' + id);
+            if (orphan) orphan.remove();
+            el.innerHTML = '<pre style="color:#f87171;white-space:pre-wrap;font-size:12px;">图表渲染失败\n' + code.substring(0, 500) + '</pre>';
         }
+        el.setAttribute('data-processed', 'true');
     }
 }
 
@@ -400,8 +423,11 @@ document.addEventListener('DOMContentLoaded', function() {
             el.innerHTML = marked.parse(raw);
         }
     });
-    // 初始渲染概览 Tab 中的 Mermaid 图表
+    // 初始渲染所有 Tab 中的 Mermaid 图表
     renderMermaidInTab('tab-overview');
+    renderMermaidInTab('tab-design');
+    renderMermaidInTab('tab-tech');
+    renderMermaidInTab('tab-architecture');
     // 权限控制
     fetch('/users/me').then(r => r.json()).then(data => {
         if (data && data.id) {
