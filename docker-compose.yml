@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: aisalon-app
+    restart: always
+    env_file: .env.production
+    ports:
+      - "5000:5000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - aisalon-net
+
+  mysql:
+    image: mysql:8.0
+    container_name: aisalon-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-AiSalon2026!}
+      MYSQL_DATABASE: ai_salon
+      MYSQL_CHARSET: utf8mb4
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aisalon-net
+
+  nginx:
+    image: nginx:alpine
+    container_name: aisalon-nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    networks:
+      - aisalon-net
+
+volumes:
+  mysql_data:
+
+networks:
+  aisalon-net:
+    driver: bridge
