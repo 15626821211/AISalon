@@ -6,8 +6,6 @@ services:
     container_name: aisalon-app
     restart: always
     env_file: .env.production
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     ports:
       - "5000:5000"
     networks:

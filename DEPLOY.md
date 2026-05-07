@@ -10,7 +10,7 @@
 | 磁盘 | 20GB+ |
 | 网络 | 可访问外网（拉取 Docker 镜像） |
 | 权限 | root |
-| MySQL | 服务器已安装 MySQL 8.0（使用现有实例，不另装） |
+| MySQL | Azure Database for MySQL（云数据库，无需本地安装） |
 
 ---
 
@@ -37,18 +37,19 @@ docker compose version
 
 ---
 
-## 三、准备 MySQL
+## 三、数据库说明
 
-使用服务器现有的 MySQL，不需要在 Docker 中额外启动。
+使用 Azure Database for MySQL 云数据库，无需本地安装 MySQL。
 
-```bash
-# 登录 MySQL 创建数据库
-mysql -uroot -p'AiSalon2026!'
-```
+| 项目 | 值 |
+|------|------|
+| 主机 | `datp-dev-pas-n3-mysql001.mysql.database.chinacloudapi.cn` |
+| 用户名 | `ai_salonuser` |
+| 密码 | `AISalon2026!` |
+| 数据库 | `ai_salondb` |
+| 端口 | 3306 |
 
-```sql
-CREATE DATABASE IF NOT EXISTS ai_salon CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
+> 应用首次启动时会自动建表，无需手动初始化。
 
 ---
 
@@ -74,11 +75,11 @@ vi .env.production
 | 变量 | 说明 | 示例 |
 |------|------|------|
 | SECRET_KEY | Flask密钥，随机字符串 | `openssl rand -hex 32` 生成 |
-| DATABASE_URL | 数据库连接串 | `mysql+pymysql://root:AiSalon2026!@host.docker.internal:3306/ai_salon` |
+| DATABASE_URL | 数据库连接串 | `mysql+pymysql://ai_salonuser:AISalon2026!@datp-dev-pas-n3-mysql001.mysql.database.chinacloudapi.cn:3306/ai_salondb` |
 | OPENAI_API_KEY | Azure OpenAI 密钥 | 找开发获取 |
 | GITHUB_TOKEN | GitHub Token（可选） | 提升 API 限额 |
 
-> **注意**：DATABASE_URL 中的主机名必须是 `host.docker.internal`（指向宿主机），不是 `localhost`。
+> **注意**：DATABASE_URL 中的主机名为 Azure MySQL 云数据库地址，应用容器需能访问外网。
 
 ### 4.3 启动服务
 
@@ -119,7 +120,7 @@ curl http://localhost:8180
 ## 五、服务架构
 
 ```
-用户 → Nginx(:8180) → Flask App(:5000) → 宿主机 MySQL(:3306)
+用户 → Nginx(:8180) → Flask App(:5000) → Azure MySQL(云数据库)
 ```
 
 | 容器 | 说明 | 端口 |
@@ -127,7 +128,7 @@ curl http://localhost:8180
 | aisalon-nginx | 反向代理 | 8180 (对外) |
 | aisalon-app | Flask应用 (Gunicorn 4 workers) | 5000 (内部) |
 
-MySQL 使用服务器本机实例，非容器化。
+MySQL 使用 Azure 云数据库，非本地实例。
 
 ---
 
@@ -142,7 +143,7 @@ MySQL 使用服务器本机实例，非容器化。
 | 停止所有服务 | `docker compose down` |
 | 更新代码并重新部署 | `git pull && docker compose up -d --build` |
 | 进入应用容器 | `docker exec -it aisalon-app bash` |
-| 进入数据库 | `mysql -uroot -p'AiSalon2026!' ai_salon` |
+| 进入数据库 | `mysql -u ai_salonuser -p'AISalon2026!' -h datp-dev-pas-n3-mysql001.mysql.database.chinacloudapi.cn ai_salondb` |
 | 查看磁盘占用 | `docker system df` |
 | 清理无用镜像 | `docker image prune -f` |
 
@@ -152,16 +153,16 @@ MySQL 使用服务器本机实例，非容器化。
 
 ```bash
 # 备份数据库
-mysqldump -uroot -p'AiSalon2026!' ai_salon > backup_$(date +%Y%m%d).sql
+mysqldump -u ai_salonuser -p'AISalon2026!' -h datp-dev-pas-n3-mysql001.mysql.database.chinacloudapi.cn ai_salondb > backup_$(date +%Y%m%d).sql
 
 # 恢复数据库
-mysql -uroot -p'AiSalon2026!' ai_salon < backup_20260506.sql
+mysql -u ai_salonuser -p'AISalon2026!' -h datp-dev-pas-n3-mysql001.mysql.database.chinacloudapi.cn ai_salondb < backup_20260506.sql
 ```
 
 建议设置 crontab 定时备份：
 ```bash
 # 每天凌晨3点自动备份，保留7天
-0 3 * * * mysqldump -uroot -p'AiSalon2026!' ai_salon | gzip > /opt/backup/aisalon_$(date +\%Y\%m\%d).sql.gz && find /opt/backup -name "aisalon_*.sql.gz" -mtime +7 -delete
+0 3 * * * mysqldump -u ai_salonuser -p'AISalon2026!' -h datp-dev-pas-n3-mysql001.mysql.database.chinacloudapi.cn ai_salondb | gzip > /opt/backup/aisalon_$(date +\%Y\%m\%d).sql.gz && find /opt/backup -name "aisalon_*.sql.gz" -mtime +7 -delete
 ```
 
 ---
@@ -184,7 +185,7 @@ firewall-cmd --reload
 |------|----------|
 | 页面无法访问 | `docker compose ps` 确认容器运行; `firewall-cmd --list-ports` 确认端口开放; 阿里云安全组是否放行 |
 | 应用500错误 | `docker compose logs -f app` 查看错误日志 |
-| 数据库连接失败 | 确认 MySQL 服务运行中: `systemctl status mysqld`; 确认密码正确 |
+| 数据库连接失败 | 确认服务器可访问 Azure MySQL; 确认用户名密码正确; 检查 Azure 防火墙规则是否放行服务器 IP |
 | 容器启动失败 | `docker compose logs 容器名` 查看具体报错 |
 | 磁盘满 | `docker system prune -a` 清理；扩容磁盘 |
 | AI分析超时 | 正常现象，LLM调用需1-2分钟，已设 300s 超时 |
