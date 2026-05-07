@@ -25,5 +25,5 @@ WORKDIR /app/src
 
 EXPOSE 5000
 
-# Gunicorn 启动，4 worker，绑定 0.0.0.0:5000
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "300", "app:create_app()"]
+# Gunicorn 启动，preload 确保建表只执行一次，4 worker
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "300", "--preload", "app:create_app()"]
