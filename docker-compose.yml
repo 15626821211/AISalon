@@ -6,31 +6,10 @@ services:
     container_name: aisalon-app
     restart: always
     env_file: .env.production
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "5000:5000"
-    depends_on:
-      mysql:
-        condition: service_healthy
-    networks:
-      - aisalon-net
-
-  mysql:
-    image: docker.m.daocloud.io/mysql:8.0
-    container_name: aisalon-mysql
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-AiSalon2026!}
-      MYSQL_DATABASE: ai_salon
-      MYSQL_CHARSET: utf8mb4
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
       - aisalon-net
 
@@ -46,9 +25,6 @@ services:
       - app
     networks:
       - aisalon-net
-
-volumes:
-  mysql_data:
 
 networks:
   aisalon-net:
