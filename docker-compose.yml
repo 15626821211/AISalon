@@ -15,7 +15,7 @@ services:
       - aisalon-net
 
   mysql:
-    image: mysql:8.0
+    image: registry.cn-hangzhou.aliyuncs.com/library/mysql:8.0
     container_name: aisalon-mysql
     restart: always
     environment:
@@ -35,7 +35,7 @@ services:
       - aisalon-net
 
   nginx:
-    image: nginx:alpine
+    image: registry.cn-hangzhou.aliyuncs.com/library/nginx:alpine
     container_name: aisalon-nginx
     restart: always
     ports:
