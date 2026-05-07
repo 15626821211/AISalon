@@ -60,7 +60,7 @@ docker compose version
 ```bash
 cd /opt
 git clone https://github.com/15626821211/AISalon.git
-cd AISalon/event-platform
+cd AISalon
 ```
 
 ### 4.2 配置环境变量
