@@ -7,7 +7,7 @@ services:
     restart: always
     env_file: .env.production
     ports:
-      - "5000:5000"
+      - "5001:5001"
     networks:
       - aisalon-net
 

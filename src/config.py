@@ -17,6 +17,13 @@ class Config:
         'max_overflow': 20,
         'pool_timeout': 30,
     }
+    # Azure MySQL SSL 连接
+    if os.environ.get('MYSQL_SSL', '').lower() in ['true', '1']:
+        SQLALCHEMY_ENGINE_OPTIONS['connect_args'] = {
+            'ssl': {
+                'ca': os.environ.get('MYSQL_SSL_CA', '/etc/ssl/certs/ca-certificates.crt')
+            }
+        }
     DEBUG = os.environ.get('DEBUG', 'False').lower() in ['true', '1', 't']
     OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
     OPENAI_BASE_URL = os.environ.get('OPENAI_BASE_URL', 'https://dmc-openai-swec.openai.azure.com/openai/v1')

@@ -23,7 +23,7 @@ COPY src/ ./src/
 
 WORKDIR /app/src
 
-EXPOSE 5000
+EXPOSE 5001
 
 # Gunicorn 启动，preload 确保建表只执行一次，4 worker
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "300", "--preload", "app:create_app()"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "4", "--timeout", "300", "--preload", "app:create_app()"]

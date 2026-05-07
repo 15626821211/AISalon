@@ -75,11 +75,13 @@ vi .env.production
 | 变量 | 说明 | 示例 |
 |------|------|------|
 | SECRET_KEY | Flask密钥，随机字符串 | `openssl rand -hex 32` 生成 |
-| DATABASE_URL | 数据库连接串 | `mysql+pymysql://ai_salonuser:AISalon2026!@datp-dev-pas-n3-mysql001.mysql.database.chinacloudapi.cn:3306/ai_salondb` |
+| DATABASE_URL | 数据库连接串 | `mysql+pymysql://ai_salonuser:AISalon2026!@datp-dev-pas-n3-mysql001.mysql.database.chinacloudapi.cn:3306/ai_salondb?charset=utf8mb4` |
+| MYSQL_SSL | 启用SSL连接Azure MySQL | `true` |
 | OPENAI_API_KEY | Azure OpenAI 密钥 | 找开发获取 |
 | GITHUB_TOKEN | GitHub Token（可选） | 提升 API 限额 |
 
 > **注意**：DATABASE_URL 中的主机名为 Azure MySQL 云数据库地址，应用容器需能访问外网。
+> `MYSQL_SSL=true` 会使用系统 CA 证书（`/etc/ssl/certs/ca-certificates.crt`）建立 SSL 加密连接。
 
 ### 4.3 启动服务
 
@@ -120,13 +122,13 @@ curl http://localhost:8180
 ## 五、服务架构
 
 ```
-用户 → Nginx(:8180) → Flask App(:5000) → Azure MySQL(云数据库)
+用户 → Nginx(:8180) → Flask App(:5001) → Azure MySQL(云数据库)
 ```
 
 | 容器 | 说明 | 端口 |
 |------|------|------|
 | aisalon-nginx | 反向代理 | 8180 (对外) |
-| aisalon-app | Flask应用 (Gunicorn 4 workers) | 5000 (内部) |
+| aisalon-app | Flask应用 (Gunicorn 4 workers) | 5001 (内部) |
 
 MySQL 使用 Azure 云数据库，非本地实例。
 
