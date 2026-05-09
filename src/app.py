@@ -38,11 +38,28 @@ def create_app():
         # 每次请求/上下文结束后释放会话，防止连接池被占满
         db.session.remove()
 
-    # 自动建表
+    # 自动建表 + 增量迁移
     with app.app_context():
         db.create_all()
+        _auto_migrate(db)
 
     return app
+
+
+def _auto_migrate(database):
+    """检查并添加缺失的列，弥补 create_all() 无法 ALTER 已有表的不足。"""
+    from sqlalchemy import text, inspect
+    inspector = inspect(database.engine)
+    migrations = [
+        # (表名, 列名, 列定义)
+        ('projects', 'code_files', 'JSON DEFAULT NULL'),
+    ]
+    for table, column, col_def in migrations:
+        if table in inspector.get_table_names():
+            existing = [c['name'] for c in inspector.get_columns(table)]
+            if column not in existing:
+                database.session.execute(text(f'ALTER TABLE `{table}` ADD COLUMN `{column}` {col_def}'))
+                database.session.commit()
 
 
 if __name__ == '__main__':
