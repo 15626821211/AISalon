@@ -1,7 +1,7 @@
 """项目知识库服务层——CRUD + 分析调度。"""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from models import db, Project, ProjectComment, ProjectLike
 from integrations.github_client import fetch_repo_content
 from projects.ai_analyzer import analyze_project
@@ -120,7 +120,7 @@ class ProjectService:
         # 保存拉取的代码文件，供AI助手对话时检索
         project.code_files = repo_content.get('files', [])
         project.status = result.get('status', 'partial')
-        project.analyzed_at = datetime.utcnow()
+        project.analyzed_at = datetime.now(timezone(timedelta(hours=8)))
         db.session.commit()
 
         return ProjectService.to_dict(project)
