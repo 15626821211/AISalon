@@ -56,67 +56,150 @@
 
     <!-- Tab 内容 -->
     <div class="knowledge-section" id="tab-overview">
-        <h2>📋 项目概览</h2>
+        <div class="section-hero hero-overview">
+            <div class="hero-icon">📋</div>
+            <div class="hero-text">
+                <h2>项目概览</h2>
+                <p class="hero-subtitle">AI 自动提炼的项目核心信息</p>
+            </div>
+        </div>
         <div class="knowledge-content">{{ project.summary or '暂无内容' }}</div>
+        {% if project.tech_stack or project.architecture %}
+        <div class="highlight-cards">
+            {% if project.tech_stack %}
+            <div class="highlight-card highlight-tech" onclick="switchTab('tech')" style="cursor:pointer;">
+                <div class="highlight-icon">🔧</div>
+                <div class="highlight-label">技术选型</div>
+                <div class="highlight-value">{{ project.tech_stack[:60]|striptags }}...</div>
+            </div>
+            {% endif %}
+            {% if project.architecture %}
+            <div class="highlight-card highlight-arch" onclick="switchTab('architecture')" style="cursor:pointer;">
+                <div class="highlight-icon">🏗️</div>
+                <div class="highlight-label">系统架构</div>
+                <div class="highlight-value">{{ project.architecture[:60]|striptags }}...</div>
+            </div>
+            {% endif %}
+            {% if project.key_code_snippets %}
+            <div class="highlight-card highlight-code" onclick="switchTab('code')" style="cursor:pointer;">
+                <div class="highlight-icon">💡</div>
+                <div class="highlight-label">核心代码</div>
+                <div class="highlight-value">{{ project.key_code_snippets|length }} 个关键片段</div>
+            </div>
+            {% endif %}
+            {% if project.diagrams %}
+            <div class="highlight-card highlight-diagram" onclick="switchTab('architecture')" style="cursor:pointer;">
+                <div class="highlight-icon">📊</div>
+                <div class="highlight-label">可视化图表</div>
+                <div class="highlight-value">{{ project.diagrams|length }} 张架构图</div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
         {% if project.use_cases %}
-        <h2 style="margin-top:28px;">🎯 应用场景</h2>
+        <h3 style="margin-top:28px;color:#93c5fd;">🎯 应用场景</h3>
         <div class="knowledge-content markdown-body" data-md="{{ project.use_cases|e }}">{{ project.use_cases }}</div>
         {% endif %}
     </div>
 
     <div class="knowledge-section" id="tab-design" style="display:none;">
-        <h2>🧠 设计思路</h2>
+        <div class="section-hero hero-design">
+            <div class="hero-icon">🧠</div>
+            <div class="hero-text">
+                <h2>设计思路</h2>
+                <p class="hero-subtitle">核心设计理念与架构决策</p>
+            </div>
+        </div>
         {% if project.diagrams %}
             {% for d in project.diagrams %}
                 {% if d.type == 'design' %}
                 <div class="diagram-card">
-                    <h3>{{ d.title or '设计思路图' }}</h3>
+                    <h3>🖼️ {{ d.title or '设计思路图' }}</h3>
                     <div class="mermaid-diagram"><script type="text/mermaid-source">{{ d.mermaid|safe }}</script></div>
                 </div>
                 {% endif %}
             {% endfor %}
         {% endif %}
-        <div class="knowledge-content markdown-body" data-md="{{ project.design_thinking|e }}">{{ project.design_thinking or '暂无内容' }}</div>
+        <div class="knowledge-card">
+            <div class="knowledge-content markdown-body" data-md="{{ project.design_thinking|e }}">{{ project.design_thinking or '暂无内容' }}</div>
+        </div>
     </div>
 
     <div class="knowledge-section" id="tab-tech" style="display:none;">
-        <h2>🔧 技术选型</h2>
+        <div class="section-hero hero-tech">
+            <div class="hero-icon">🔧</div>
+            <div class="hero-text">
+                <h2>技术选型</h2>
+                <p class="hero-subtitle">语言、框架、中间件与工具链</p>
+            </div>
+        </div>
         {% if project.diagrams %}
             {% for d in project.diagrams %}
                 {% if d.type == 'tech' %}
                 <div class="diagram-card">
-                    <h3>{{ d.title or '技术栈图' }}</h3>
+                    <h3>🖼️ {{ d.title or '技术栈图' }}</h3>
                     <div class="mermaid-diagram"><script type="text/mermaid-source">{{ d.mermaid|safe }}</script></div>
                 </div>
                 {% endif %}
             {% endfor %}
         {% endif %}
-        <div class="knowledge-content markdown-body" data-md="{{ project.tech_stack|e }}">{{ project.tech_stack or '暂无内容' }}</div>
+        <div class="knowledge-card">
+            <div class="knowledge-content markdown-body" data-md="{{ project.tech_stack|e }}">{{ project.tech_stack or '暂无内容' }}</div>
+        </div>
     </div>
 
     <div class="knowledge-section" id="tab-architecture" style="display:none;">
-        <h2>🏗️ 架构描述</h2>
+        <div class="section-hero hero-architecture">
+            <div class="hero-icon">🏗️</div>
+            <div class="hero-text">
+                <h2>系统架构</h2>
+                <p class="hero-subtitle">模块划分、数据流与依赖关系</p>
+            </div>
+        </div>
         {% if project.diagrams %}
             {% for d in project.diagrams %}
-                {% if d.type == 'architecture' %}
+                {% if d.type in ['architecture', 'flow'] %}
                 <div class="diagram-card">
-                    <h3>{{ d.title or '架构图' }}</h3>
+                    <h3>🖼️ {{ d.title or '架构图' }}</h3>
                     <div class="mermaid-diagram"><script type="text/mermaid-source">{{ d.mermaid|safe }}</script></div>
                 </div>
                 {% endif %}
             {% endfor %}
         {% endif %}
-        <div class="knowledge-content markdown-body" data-md="{{ project.architecture|e }}">{{ project.architecture or '暂无内容' }}</div>
+        <div class="knowledge-card">
+            <div class="knowledge-content markdown-body" data-md="{{ project.architecture|e }}">{{ project.architecture or '暂无内容' }}</div>
+        </div>
     </div>
 
     <div class="knowledge-section" id="tab-code" style="display:none;">
-        <h2>💡 核心代码解读</h2>
+        <div class="section-hero hero-code">
+            <div class="hero-icon">💡</div>
+            <div class="hero-text">
+                <h2>核心代码解读</h2>
+                <p class="hero-subtitle">各模块关键代码片段与设计解析</p>
+            </div>
+        </div>
+        {% if project.diagrams %}
+            {% for d in project.diagrams %}
+                {% if d.type in ['callgraph', 'dependency'] %}
+                <div class="diagram-card">
+                    <h3>🗺️ {{ d.title or '调用关系图' }}</h3>
+                    <div class="mermaid-diagram"><script type="text/mermaid-source">{{ d.mermaid|safe }}</script></div>
+                </div>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
         {% if project.key_code_snippets %}
             {% for snippet in project.key_code_snippets %}
             <div class="code-snippet-card">
-                <div class="code-snippet-file">📄 {{ snippet.file or '未知文件' }}</div>
-                <pre><code>{{ snippet.code or '' }}</code></pre>
-                <div class="code-snippet-explanation">{{ snippet.explanation or '' }}</div>
+                <div class="code-snippet-file">
+                    📄 {{ snippet.file or '未知文件' }}
+                    {% if snippet.file and '/' in snippet.file %}
+                    <span class="code-module-badge">{{ snippet.file.split('/')[0] }}</span>
+                    {% endif %}
+                </div>
+                <div class="code-snippet-code" data-code="{{ snippet.code|e }}"></div>
+                <div class="code-snippet-explanation knowledge-content markdown-body" data-md="{{ snippet.explanation|e }}">{{ snippet.explanation or '' }}</div>
             </div>
             {% endfor %}
         {% else %}
@@ -125,17 +208,55 @@
     </div>
 
     <div class="knowledge-section" id="tab-directory" style="display:none;">
-        <h2>📂 目录结构</h2>
+        <div class="section-hero hero-directory">
+            <div class="hero-icon">📂</div>
+            <div class="hero-text">
+                <h2>目录结构</h2>
+                <p class="hero-subtitle">项目工程结构与模块说明</p>
+            </div>
+        </div>
+        {% if project.diagrams %}
+            {% for d in project.diagrams %}
+                {% if d.type == 'dependency' %}
+                <div class="diagram-card">
+                    <h3>🔗 {{ d.title or '模块依赖图' }}</h3>
+                    <div class="mermaid-diagram"><script type="text/mermaid-source">{{ d.mermaid|safe }}</script></div>
+                </div>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
         <div class="knowledge-content markdown-body" data-md="{{ project.directory_structure|e }}">{{ project.directory_structure or '暂无内容' }}</div>
     </div>
 
     <div class="knowledge-section" id="tab-guide" style="display:none;">
-        <h2>📖 部署指南</h2>
+        <div class="section-hero hero-guide">
+            <div class="hero-icon">📖</div>
+            <div class="hero-text">
+                <h2>部署指南</h2>
+                <p class="hero-subtitle">环境准备、安装配置与启动运行</p>
+            </div>
+        </div>
+        {% if project.diagrams %}
+            {% for d in project.diagrams %}
+                {% if d.type == 'deployment' %}
+                <div class="diagram-card">
+                    <h3>☁️ {{ d.title or '部署架构图' }}</h3>
+                    <div class="mermaid-diagram"><script type="text/mermaid-source">{{ d.mermaid|safe }}</script></div>
+                </div>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
         <div class="knowledge-content markdown-body" data-md="{{ project.usage_guide|e }}">{{ project.usage_guide or '暂无内容' }}</div>
     </div>
 
     <div class="knowledge-section" id="tab-lessons" style="display:none;">
-        <h2>🎯 经验教训</h2>
+        <div class="section-hero hero-lessons">
+            <div class="hero-icon">🎯</div>
+            <div class="hero-text">
+                <h2>经验教训</h2>
+                <p class="hero-subtitle">最佳实践、风险点与可复用经验</p>
+            </div>
+        </div>
         <div class="knowledge-content markdown-body" data-md="{{ project.lessons_learned|e }}">{{ project.lessons_learned or '暂无内容' }}</div>
     </div>
     {% else %}
@@ -229,7 +350,12 @@ function switchTab(name) {
     document.querySelectorAll('.knowledge-section').forEach(s => s.style.display = 'none');
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('tab-' + name).style.display = '';
-    event.target.classList.add('active');
+    // 激活对应 tab 按钮
+    document.querySelectorAll('.tab-btn').forEach(b => {
+        if (b.getAttribute('onclick') && b.getAttribute('onclick').includes("'" + name + "'")) {
+            b.classList.add('active');
+        }
+    });
     // 渲染当前 Tab 中的 Mermaid 图表
     renderMermaidInTab('tab-' + name);
 }
@@ -249,6 +375,10 @@ async function renderMermaidInTab(tabId) {
         code = code.replace(/\\n/g, '\n');
         code = code.replace(/\r\n/g, '\n');
 
+        // 清理节点标签中的引号: A["文字"] → A[文字]
+        code = code.replace(/\["([^\]"]*?)"\]/g, '[$1]');
+        code = code.replace(/\['([^\]']*?)'\]/g, '[$1]');
+
         // v10兼容：方括号节点内的圆括号 [前端(Vue.js)] → [前端 - Vue.js]
         code = code.replace(/\[([^\]]*?)\(([^)]*?)\)([^\]]*?)\]/g, '[$1 - $2$3]');
         code = code.replace(/\[([^\]]*?)\(([^)]*?)\)([^\]]*?)\]/g, '[$1 - $2$3]');
@@ -259,10 +389,21 @@ async function renderMermaidInTab(tabId) {
             const svg = typeof result === 'string' ? result : result.svg;
             el.innerHTML = svg;
         } catch (e) {
-            console.warn('Mermaid render failed:', id, e.message, '\n' + code.substring(0, 200));
+            console.warn('Mermaid render failed:', id, e.message, '\n' + code.substring(0, 300));
             const orphan = document.getElementById('d' + id);
             if (orphan) orphan.remove();
-            el.innerHTML = '<pre style="color:#f87171;white-space:pre-wrap;font-size:12px;">图表渲染失败\n' + code.substring(0, 500) + '</pre>';
+            // 尝试简化代码重新渲染（去掉 subgraph、样式等复杂语法）
+            try {
+                let simpleCode = code.replace(/subgraph\s+[^\n]*/g, 'subgraph Module')
+                                     .replace(/:::[^\s]*/g, '')
+                                     .replace(/style\s+[^\n]*/g, '');
+                const id2 = id + '-retry';
+                const result2 = await mermaid.render(id2, simpleCode);
+                const svg2 = typeof result2 === 'string' ? result2 : result2.svg;
+                el.innerHTML = svg2;
+            } catch (e2) {
+                el.innerHTML = '<div style="color:#f87171;font-size:13px;padding:12px;background:rgba(248,113,113,0.08);border-radius:8px;">⚠️ 图表渲染失败，请重新分析项目</div>';
+            }
         }
         el.setAttribute('data-processed', 'true');
     }
@@ -271,10 +412,14 @@ async function renderMermaidInTab(tabId) {
 async function triggerAnalysis() {
     document.getElementById('analyze-loading').style.display = 'flex';
     try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 600000); // 10分钟超时
         const resp = await fetch(window.location.pathname.replace('/page', '/analyze'), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal
         });
+        clearTimeout(timeoutId);
         if (!resp.ok) {
             const data = await resp.json();
             alert(data.message || '分析失败');
@@ -282,7 +427,11 @@ async function triggerAnalysis() {
             window.location.reload();
         }
     } catch (e) {
-        alert('分析请求失败: ' + e.message);
+        if (e.name === 'AbortError') {
+            alert('分析超时，请稍后刷新页面查看结果');
+        } else {
+            alert('分析请求失败: ' + e.message);
+        }
     } finally {
         document.getElementById('analyze-loading').style.display = 'none';
     }
@@ -420,14 +569,38 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.markdown-body[data-md]').forEach(el => {
         const raw = el.getAttribute('data-md');
         if (raw && raw !== 'None') {
-            el.innerHTML = marked.parse(raw);
+            const textarea = document.createElement('textarea');
+            textarea.innerHTML = raw;
+            const decoded = textarea.value;
+            el.innerHTML = marked.parse(decoded);
         }
     });
-    // 初始渲染所有 Tab 中的 Mermaid 图表
-    renderMermaidInTab('tab-overview');
-    renderMermaidInTab('tab-design');
-    renderMermaidInTab('tab-tech');
-    renderMermaidInTab('tab-architecture');
+    // 代码片段渲染（解码 HTML entities 后放入 pre>code）
+    document.querySelectorAll('.code-snippet-code[data-code]').forEach(el => {
+        const raw = el.getAttribute('data-code');
+        if (raw && raw !== 'None') {
+            const textarea = document.createElement('textarea');
+            textarea.innerHTML = raw;
+            let code = textarea.value.trim();
+            // 如果 LLM 返回了 markdown 代码块标记，去掉它
+            code = code.replace(/^```[\w]*\n?/gm, '').replace(/```$/gm, '').trim();
+            const pre = document.createElement('pre');
+            const codeEl = document.createElement('code');
+            codeEl.textContent = code;
+            pre.appendChild(codeEl);
+            el.appendChild(pre);
+        }
+    });
+    // 等 mermaid 库就绪后再渲染图表
+    function initMermaidCharts() {
+        if (typeof mermaid === 'undefined' || typeof mermaid.render !== 'function') {
+            setTimeout(initMermaidCharts, 200);
+            return;
+        }
+        // 渲染所有包含图表的 Tab（包括隐藏的Tab，mermaid.render 可在隐藏状态下工作）
+        ['tab-overview','tab-design','tab-tech','tab-architecture','tab-code','tab-directory','tab-guide'].forEach(renderMermaidInTab);
+    }
+    initMermaidCharts();
     // 权限控制
     fetch('/users/me').then(r => r.json()).then(data => {
         if (data && data.id) {

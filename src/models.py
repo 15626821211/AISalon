@@ -108,6 +108,7 @@ class Project(db.Model):
     usage_guide = db.Column(db.Text)
     directory_structure = db.Column(db.Text)
     diagrams = db.Column(db.JSON, default=list)
+    code_files = db.Column(db.JSON, default=list)  # 分析时拉取的代码文件 [{path, content}]
     status = db.Column(db.String(20), default='draft')
     analyzed_at = db.Column(db.DateTime, nullable=True)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)

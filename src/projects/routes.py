@@ -167,10 +167,48 @@ def project_chat(project_id):
             for s in (project['key_code_snippets'] or [])[:5]
         )
         context_parts.append(f"核心代码：{snippets_text}")
+
+    # 检索用户问题中提及的代码文件，提供给 LLM
+    # 直接从数据库模型读取 code_files，避免 to_dict 携带大量代码数据
+    from models import Project as ProjectModel
+    project_model = ProjectModel.query.get(project_id)
+    code_files = (project_model.code_files or []) if project_model else []
+    if code_files:
+        q_lower = question.lower()
+        # 分级匹配：精确路径 > 文件名 > 路径片段
+        exact_match = []
+        fname_match = []
+        for f in code_files:
+            fpath = f.get('path', '')
+            fname = fpath.split('/')[-1].lower()
+            if fpath.lower() in q_lower:
+                exact_match.append(f)
+            elif fname in q_lower and len(fname) > 5:
+                fname_match.append(f)
+        # 优先使用精确匹配，其次文件名匹配
+        matched_files = exact_match or fname_match
+        # 限制总大小，避免超出 token 限制
+        file_context = ''
+        total_len = 0
+        for f in matched_files[:5]:
+            content = f.get('content', '')[:8000]
+            file_context += f"\n\n--- 文件: {f['path']} ---\n{content}"
+            total_len += len(content)
+            if total_len > 25000:
+                break
+        if file_context:
+            context_parts.append(f"用户提到的代码文件内容：{file_context}")
+        # 如果没有精确匹配，提供文件列表供参考
+        elif code_files:
+            file_list = '\n'.join(f.get('path', '') for f in code_files)
+            context_parts.append(f"项目包含的代码文件列表（用户可以指定文件名让我查看）：\n{file_list}")
+
     project_context = '\n\n'.join(context_parts)
 
-    system_prompt = f"""你是项目「{project['name']}」的 AI 智能助手。你只能基于以下项目资料回答问题，不得回答与本项目无关的内容。
-如果用户的问题与本项目无关，请礼貌地拒绝并提示"我只能回答与当前项目相关的问题"。
+    system_prompt = f"""你是项目「{project['name']}」的 AI 智能助手。请基于以下项目资料回答问题。
+如果资料中包含了用户提到的代码文件内容，请直接基于代码进行分析和解读。
+如果用户询问的文件不在资料中，告诉用户"该文件未被收录到分析范围，建议重新分析项目以获取更多文件"。
+如果用户的问题与本项目无关，请礼貌地拒绝。
 请用简体中文回答，使用 Markdown 格式排版。
 
 ---

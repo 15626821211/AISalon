@@ -7,6 +7,10 @@ from urllib.parse import quote, urlparse
 import requests
 from config import Config
 
+# 不走代理的请求 session，避免公司 VPN/代理导致 SSL 错误
+_no_proxy_session = requests.Session()
+_no_proxy_session.trust_env = False
+
 # 文件优先级和过滤配置
 PRIORITY_FILES = ['README.md', 'readme.md', 'README.rst']
 PRIORITY_DIRS = ['docs', 'doc', 'documentation']
@@ -21,7 +25,7 @@ SKIP_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.webp',
                    '.woff', '.woff2', '.ttf', '.eot', '.mp3', '.mp4', '.zip',
                    '.tar', '.gz', '.exe', '.dll', '.so', '.pyc', '.class',
                    '.lock', '.min.js', '.min.css', '.map'}
-MAX_CONTENT_SIZE = 200 * 1024  # 200KB
+MAX_CONTENT_SIZE = 400 * 1024  # 400KB
 
 
 def parse_repo_url(url: str) -> dict:
@@ -137,7 +141,7 @@ def _get_gitlab_session(repo_info: dict) -> requests.Session:
 
 def _get_github_default_branch(repo_info: dict) -> str:
     url = f"https://api.github.com/repos/{repo_info['owner']}/{repo_info['repo']}"
-    resp = requests.get(url, headers=_get_headers('github'), timeout=30)
+    resp = _no_proxy_session.get(url, headers=_get_headers('github'), timeout=30)
     if resp.status_code == 403:
         raise RuntimeError('GitHub API 速率限制，请设置 GITHUB_TOKEN 环境变量提升限额')
     if resp.status_code == 404:
@@ -159,7 +163,7 @@ def _fetch_github_file_tree(repo_info: dict) -> list:
             continue
         seen.add(branch)
         url = f"https://api.github.com/repos/{repo_info['owner']}/{repo_info['repo']}/git/trees/{branch}?recursive=1"
-        resp = requests.get(url, headers=_get_headers('github'), timeout=30)
+        resp = _no_proxy_session.get(url, headers=_get_headers('github'), timeout=30)
         if resp.status_code == 403:
             raise RuntimeError('GitHub API 速率限制，请设置 GITHUB_TOKEN 环境变量提升限额')
         if resp.status_code == 200:
@@ -176,7 +180,7 @@ def _fetch_github_file_content(repo_info: dict, path: str) -> str:
     params = {}
     if repo_info.get('branch'):
         params['ref'] = repo_info['branch']
-    resp = requests.get(url, headers=_get_headers('github'), params=params, timeout=30)
+    resp = _no_proxy_session.get(url, headers=_get_headers('github'), params=params, timeout=30)
     if resp.status_code != 200:
         return ''
     data = resp.json()
@@ -299,8 +303,8 @@ def select_files(tree: list) -> list:
         # 配置文件
         elif filename in CONFIG_FILES:
             configs.append(path)
-        # 核心代码目录（顶层匹配或任意层级含 src/）
-        elif any(path.startswith(d + '/') for d in CODE_DIRS) or '/src/' in path:
+        # 核心代码目录（顶层匹配或任意层级含 src/）或代码文件扩展名
+        elif any(path.startswith(d + '/') for d in CODE_DIRS) or '/src/' in path or path.endswith(('.java', '.py', '.go', '.rs', '.ts', '.js', '.kt')):
             code.append(path)
         # 根目录 .md 文件
         elif '/' not in path and path.endswith('.md'):
@@ -308,7 +312,7 @@ def select_files(tree: list) -> list:
         else:
             other.append(path)
 
-    # 对 code 列表进行智能排序：优先 Controller/Service/核心文件
+    # 对 code 列表进行智能排序：优先 Controller/Service/核心文件，同时分散各模块
     def _code_priority(p):
         lower = p.lower()
         if 'controller' in lower or 'resource' in lower:
@@ -324,32 +328,74 @@ def select_files(tree: list) -> list:
         if 'repository' in lower or 'dao' in lower or 'mapper' in lower:
             return 5
         return 6
-    code.sort(key=_code_priority)
 
-    # 按优先级合并：README → 配置 → 代码 → 文档 → 其他
-    selected = readme + configs + code[:50] + docs[:15] + other[:10]
+    # 按模块分组，每个模块取 top 文件，确保覆盖所有模块
+    from collections import defaultdict
+    module_files = defaultdict(list)
+    for p in code:
+        # 提取一级目录作为模块名
+        module = p.split('/')[0] if '/' in p else '_root'
+        module_files[module].append(p)
+    # 每个模块内部按优先级排序
+    for mod in module_files:
+        module_files[mod].sort(key=_code_priority)
+    # 轮询各模块，确保每个模块都有代码被选中
+    balanced_code = []
+    max_per_module = max(10, 80 // max(len(module_files), 1))
+    for mod in sorted(module_files.keys()):
+        balanced_code.extend(module_files[mod][:max_per_module])
+    # 再按全局优先级排序
+    balanced_code.sort(key=_code_priority)
+
+    # 按优先级合并：README → 代码（优先） → 配置（限量） → 文档 → 其他
+    # 对于 Java 多模块项目，限制 pom.xml 等配置文件数量，优先保证代码文件
+    root_configs = [c for c in configs if '/' not in c]  # 根目录配置
+    sub_configs = [c for c in configs if '/' in c]  # 子模块配置
+    selected = readme + root_configs + balanced_code[:80] + sub_configs[:5] + docs[:15] + other[:10]
     return selected
+
+
+def _build_tree_string(tree: list) -> str:
+    """将文件列表构建为树形目录结构字符串（├── / └── 样式）。"""
+    # 构建嵌套 dict 表示目录树
+    root = {}
+    for item in tree:
+        path = item.get('path', '')
+        if _should_skip(path):
+            continue
+        parts = path.split('/')
+        node = root
+        for part in parts:
+            node = node.setdefault(part, {})
+
+    lines = []
+    _max_depth = 4  # 最多展示4层深度
+
+    def _render(node, prefix, depth):
+        if depth > _max_depth:
+            if node:
+                lines.append(f'{prefix}...')
+            return
+        entries = sorted(node.keys(), key=lambda k: (not bool(node[k]), k))
+        for i, name in enumerate(entries):
+            is_last = (i == len(entries) - 1)
+            connector = '└── ' if is_last else '├── '
+            children = node[name]
+            if children:
+                lines.append(f'{prefix}{connector}{name}/')
+                extension = '    ' if is_last else '│   '
+                _render(children, prefix + extension, depth + 1)
+            else:
+                lines.append(f'{prefix}{connector}{name}')
+
+    _render(root, '', 0)
+    return '\n'.join(lines)
 
 
 def _build_repo_content(tree: list, content_loader) -> dict:
     """基于文件树和内容加载器组装分析输入。"""
-    # 构建目录结构摘要：提取所有唯一目录（至多3层深度）+ 关键文件
-    dirs = set()
-    root_files = []
-    for item in tree:
-        path = item.get('path', '')
-        parts = path.split('/')
-        # 收集各层级目录
-        for i in range(1, min(len(parts), 4)):
-            dirs.add('/'.join(parts[:i]) + '/')
-        # 收集根文件和浅层关键文件
-        if len(parts) <= 2:
-            root_files.append(path)
-
-    # 组合：排序后的目录 + 根文件 + 前 100 个文件路径作为补充
-    sorted_dirs = sorted(dirs)
-    file_paths = [item['path'] for item in tree[:100]]
-    tree_summary = '\n'.join(sorted_dirs) + '\n---\n' + '\n'.join(root_files[:50]) + '\n---\n' + '\n'.join(file_paths)
+    # 构建树形目录结构摘要
+    tree_summary = _build_tree_string(tree)
 
     selected_paths = select_files(tree)
 

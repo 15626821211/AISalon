@@ -102,10 +102,23 @@ class ProjectService:
         project.tech_stack = _str(result.get('tech_stack', ''))
         project.architecture = _str(result.get('architecture', ''))
         project.key_code_snippets = result.get('key_code_snippets', [])
+        # 修复 key_code_snippets 中 explanation 包含整个 JSON 的情况
+        if (isinstance(project.key_code_snippets, list) and len(project.key_code_snippets) == 1
+                and not project.key_code_snippets[0].get('file')
+                and not project.key_code_snippets[0].get('code')):
+            raw = project.key_code_snippets[0].get('explanation', '')
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    project.key_code_snippets = parsed
+            except (json.JSONDecodeError, TypeError):
+                pass
         project.lessons_learned = _str(result.get('lessons_learned', ''))
         project.usage_guide = _str(result.get('usage_guide', ''))
         project.directory_structure = _str(result.get('directory_structure', ''))
         project.diagrams = result.get('diagrams', [])
+        # 保存拉取的代码文件，供AI助手对话时检索
+        project.code_files = repo_content.get('files', [])
         project.status = result.get('status', 'partial')
         project.analyzed_at = datetime.utcnow()
         db.session.commit()

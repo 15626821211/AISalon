@@ -27,7 +27,7 @@ class Config:
     DEBUG = os.environ.get('DEBUG', 'False').lower() in ['true', '1', 't']
     OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
     OPENAI_BASE_URL = os.environ.get('OPENAI_BASE_URL', 'https://dmc-openai-swec.openai.azure.com/openai/v1')
-    OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o')
+    OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-5.4')
     GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN', '')
     GITLAB_TOKEN = os.environ.get('GITLAB_TOKEN', '')
     GITLAB_USERNAME = os.environ.get('GITLAB_USERNAME', '')

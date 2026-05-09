@@ -15,7 +15,7 @@ def _get_client():
     if not api_key:
         raise RuntimeError('未配置 OPENAI_API_KEY')
     # 使用不走代理的 httpx 客户端，避免 VPN 导致 Azure 防火墙 403
-    http_client = httpx.Client(proxy=None)
+    http_client = httpx.Client(proxy=None, trust_env=False, timeout=httpx.Timeout(300.0))
     return AzureOpenAI(
         api_key=api_key,
         azure_endpoint=Config.OPENAI_BASE_URL.rsplit('/openai', 1)[0] if '/openai' in Config.OPENAI_BASE_URL else Config.OPENAI_BASE_URL,
@@ -24,7 +24,7 @@ def _get_client():
     )
 
 
-def _call_llm(prompt: str, system_prompt: str = '') -> str:
+def _call_llm(prompt: str, system_prompt: str = '', max_tokens: int = 8192) -> str:
     """调用 LLM，返回文本响应。"""
     client = _get_client()
     messages = []
@@ -36,30 +36,37 @@ def _call_llm(prompt: str, system_prompt: str = '') -> str:
             model=Config.OPENAI_MODEL,
             messages=messages,
             temperature=0.3,
-            max_tokens=4096,
+            max_completion_tokens=max_tokens,
         )
-        return response.choices[0].message.content.strip()
+        content = response.choices[0].message.content
+        finish_reason = response.choices[0].finish_reason
+        if finish_reason == 'length':
+            logger.warning(f'LLM 响应被截断 (max_tokens={max_tokens})，finish_reason=length')
+        return (content or '').strip()
     except Exception as e:
         logger.error(f'LLM 调用失败: {e}')
         raise
 
 
-SYSTEM_PROMPT = '你是一个资深的技术专家和项目分析师。请用简体中文回答，内容专业、清晰、有条理。使用 Markdown 格式排版：用 ## 和 ### 作为标题层级，善用 **加粗**、列表、> 引用块等格式让内容丰富多样、层次分明。'
+SYSTEM_PROMPT = '你是一个资深的技术专家和项目分析师。请用简体中文回答，内容专业、精炼、有条理。使用 Markdown 格式排版：用 ## 和 ### 作为标题层级，善用列表和加粗。注意：内容要精简扼要，每个要点 1-2 句话，不要长篇大论，但必须覆盖项目中的所有业务模块，不要遗漏。'
 
 
-def step1_overview_and_design(readme_content: str, docs_content: str) -> dict:
+def step1_overview_and_design(readme_content: str, docs_content: str, tree_summary: str = '') -> dict:
     """Step 1: 项目概览 + 设计思路。"""
-    prompt = f"""请基于以下项目文档，提炼出：
-1. **项目概览**（summary）：用 2-3 句纯文本简洁概括项目是什么、解决什么问题、面向什么用户。不要使用 Markdown 格式，不要用标题和列表。
-2. **设计思路**（design_thinking）：用 Markdown 格式阐述核心设计理念、架构决策和设计权衡，使用标题分段、列表和引用。
+    prompt = f"""请基于以下项目文档和目录结构，提炼出：
+1. **项目概览**（summary）：用 2-3 句纯文本简洁概括项目是什么、解决什么问题、面向什么用户。不要使用 Markdown 格式。
+2. **设计思路**（design_thinking）：用 Markdown 格式，精炼地阐述核心设计理念和架构决策。
+   - 必须基于目录结构列出项目中的**所有模块/子项目**及其职责（每个模块一句话）
+   - README 只作参考，以目录结构为准发现所有模块
+   - 每个要点 1-2 句话，不要长篇展开
 
 ---
 README:
-{readme_content[:8000]}
+{readme_content[:6000]}
 
 ---
-其他文档:
-{docs_content[:8000]}
+目录结构（以此为准发现所有模块）:
+{tree_summary[:6000]}
 
 请以 JSON 格式返回：{{"summary": "...", "design_thinking": "..."}}"""
 
@@ -72,39 +79,47 @@ README:
 
 def step2_tech_stack(config_content: str, code_sample: str) -> str:
     """Step 2: 技术选型分析。"""
-    prompt = f"""请基于以下项目配置文件和代码片段，分析该项目的技术选型：
-- 使用了哪些编程语言、框架、AI 模型、工具链？
-- 为什么选择这些技术？有什么优劣？
+    prompt = f"""请基于以下项目配置文件和来自不同模块的代码片段，精炼分析该项目的技术选型。
+
+要求：
+- 列出使用的编程语言、框架、中间件、数据库
+- 注意代码来自不同模块/子项目，请综合分析各模块的技术栈差异
+- 每项技术一句话点评优劣，不要长段落
+- 如果能读出版本信息请标注
 
 ---
 配置文件:
 {config_content[:6000]}
 
 ---
-代码片段:
-{code_sample[:6000]}
+代码片段（来自各模块）:
+{code_sample[:8000]}
 
-请用 Markdown 格式回答，使用 ## 标题分类（如语言、框架、数据库、工具链），每类用列表和加粗展示，附简要优劣点评。"""
+请用 Markdown 格式回答，使用 ## 标题分类，每类用列表展示，保持简洁。"""
 
     return _call_llm(prompt, SYSTEM_PROMPT)
 
 
 def step3_architecture(tree_summary: str, core_code: str) -> str:
     """Step 3: 架构描述。"""
-    prompt = f"""请基于以下项目目录结构和核心模块代码，描述该项目的系统架构：
-- 模块划分和职责
-- 数据流向
-- 核心组件之间的关系
+    prompt = f"""请基于以下项目目录结构和来自各模块的核心代码，精炼描述该项目的系统架构。
+
+关键要求：
+- 必须遍历目录结构中的**每一个**一级目录/模块，逐一用 1-2 句话说明其职责
+- 代码来自不同模块，请结合代码内容描述各模块的具体实现
+- 不要遗漏任何模块，以目录结构为准，不要只看 README
+- 简述模块间依赖关系和数据流向
+- 如有分层架构（如 Controller-Service-Repository）简要说明
 
 ---
 目录结构:
-{tree_summary[:4000]}
+{tree_summary[:6000]}
 
 ---
-核心代码:
-{core_code[:8000]}
+各模块核心代码:
+{core_code[:10000]}
 
-请用 Markdown 格式回答，用 ## 标题区分各模块，用列表描述职责，用 > 引用块标注关键设计决策。"""
+请用 Markdown 格式回答，用 ## 标题区分各模块，每个模块用 1-2 句话描述，保持精炼。"""
 
     return _call_llm(prompt, SYSTEM_PROMPT)
 
@@ -112,16 +127,22 @@ def step3_architecture(tree_summary: str, core_code: str) -> str:
 def step4_key_code_snippets(code_files: list) -> list:
     """Step 4: 核心代码解读。"""
     code_text = ''
-    for f in code_files[:10]:
-        code_text += f"\n\n--- {f['path']} ---\n{f['content'][:3000]}"
-        if len(code_text) > 15000:
+    for f in code_files[:20]:
+        code_text += f"\n\n--- {f['path']} ---\n{f['content'][:4000]}"
+        if len(code_text) > 25000:
             break
 
-    prompt = f"""请从以下代码文件中，选出 3-5 个最具学习价值的代码片段，并为每个片段写出详细解读。
+    prompt = f"""请从以下来自不同模块的代码文件中，选出 5-8 个最具代表性的代码片段，并简要解读。
+
+要求：
+- 代码来自不同模块/子项目，**每个模块至少选 1 个**代码片段
+- 优先选择业务核心逻辑（Controller、Service、核心算法）
+- 每个片段的解读限 2-3 句话，说明做了什么、为什么这么设计
+- 代码片段保持精简，只截取关键部分
 
 {code_text}
 
-请以 JSON 数组格式返回：
+请以 JSON 数组格式返回（5-8 个片段，覆盖不同模块）：
 [
   {{"file": "文件路径", "code": "关键代码片段", "explanation": "解读说明"}},
   ...
@@ -129,163 +150,146 @@ def step4_key_code_snippets(code_files: list) -> list:
 
     result = _call_llm(prompt, SYSTEM_PROMPT)
     try:
-        return json.loads(_extract_json(result))
+        parsed = json.loads(_extract_json(result))
+        if isinstance(parsed, list) and len(parsed) > 0:
+            return parsed
     except json.JSONDecodeError:
-        return [{'file': '', 'code': '', 'explanation': result}]
+        pass
+    # 二次尝试：直接解析整个结果
+    try:
+        parsed = json.loads(result)
+        if isinstance(parsed, list):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+    # 最终回退：将整段文本作为一条解读
+    return [{'file': '', 'code': '', 'explanation': result}]
 
 
 def step5_use_cases(summary: str, design: str, readme_content: str) -> str:
     """Step 5: 应用场景分析。"""
-    prompt = f"""请基于以下项目信息，简要列出该项目的应用场景。要求简洁，每个要点一句话即可，不需要详细展开。
+    prompt = f"""请基于以下项目信息，用列表简要列出应用场景和目标用户。
 
-包含：
-- 适用场景（3-5 个要点）
-- 目标用户（一句话列举）
+- 适用场景（3-5 个要点，每点一句话）
+- 目标用户（一句话）
 
 ---
-项目概览: {summary[:2000]}
-设计思路: {design[:1000]}
-README: {readme_content[:2000]}
+项目概览: {summary[:1500]}
+README: {readme_content[:1500]}
 
-请用 Markdown 格式，用简短的列表呈现，不要写长段落。"""
+请用 Markdown 列表，不要写段落。"""
 
     return _call_llm(prompt, SYSTEM_PROMPT)
 
 
 def step5b_usage_guide(readme_content: str, config_content: str, tree_summary: str) -> str:
     """Step 5b: 使用指南——拉取工程、安装环境、部署运行。"""
-    prompt = f"""请基于以下项目信息，编写一份详细的使用指南，帮助用户从零开始使用该项目。
+    prompt = f"""请基于以下项目信息，编写一份精炼的使用指南。
 
-必须包含以下章节：
-1. **拉取项目** — git clone 命令及注意事项
-2. **环境准备** — 所需的运行环境、语言版本、依赖工具
-3. **安装依赖** — 具体的安装命令
-4. **配置说明** — 需要配置的环境变量或配置文件
-5. **启动运行** — 开发环境和生产环境的启动命令
-6. **常见问题** — 可能遇到的问题及解决方法
+包含以下章节（每章 3-5 行即可）：
+1. **环境准备** — 所需环境和工具
+2. **安装依赖** — 安装命令
+3. **配置说明** — 关键配置项
+4. **启动运行** — 开发/生产启动命令
 
 ---
 README:
-{readme_content[:5000]}
+{readme_content[:4000]}
 
 配置文件:
-{config_content[:3000]}
+{config_content[:2000]}
 
-目录结构:
-{tree_summary[:2000]}
-
-请用 Markdown 格式回答，每个章节用 ## 标题，命令用代码块包裹，步骤清晰可操作。"""
+请用 Markdown 格式，命令用代码块包裹，保持精炼可操作。"""
 
     return _call_llm(prompt, SYSTEM_PROMPT)
 
 
 def step6_lessons_learned(summary: str, design: str, tech: str, architecture: str) -> str:
     """Step 5: 经验教训总结。"""
-    prompt = f"""基于以下项目分析结果，总结该项目的核心经验教训：
-- 哪些做法值得借鉴？
-- 踩了哪些坑？
-- 有哪些可复用的最佳实践？
+    prompt = f"""基于以下项目分析结果，总结核心经验教训（每部分 3-5 个要点，每点一句话）：
+
+- ✅ 值得借鉴的做法
+- ⚠️ 需要注意的问题
+- 💡 可复用的最佳实践
 
 ---
-项目概览: {summary[:2000]}
-设计思路: {design[:2000]}
-技术选型: {tech[:2000]}
-架构描述: {architecture[:2000]}
+项目概览: {summary[:1500]}
+技术选型: {tech[:1500]}
+架构描述: {architecture[:1500]}
 
-请用 Markdown 格式回答，用 ## 标题分段（如亮点、踩坑、最佳实践），善用 ✅ ⚠️ 💡 等 emoji 和加粗来突出重点。"""
+请用 Markdown 列表，保持精炼。"""
 
     return _call_llm(prompt, SYSTEM_PROMPT)
 
 
 def step6b_directory_structure(tree_summary: str, readme_content: str) -> str:
     """Step 6b: 生成带注释的目录结构说明。"""
-    prompt = f"""请基于以下项目的目录结构信息和 README，生成一份完整的带注释的目录结构说明。
+    prompt = f"""请基于以下项目的目录结构信息，生成一份精简的带注释的目录结构说明。
 
 要求：
-1. 用树形结构（类似 `tree` 命令输出）展示**所有一级和二级目录**，以及重要的三级目录
-2. 每个目录/文件后面用 `#` 注释说明其作用（根据目录名推断功能）
-3. 忽略不重要的文件（如 .gitignore、LICENSE、__pycache__、node_modules 等）
-4. **确保所有模块/子项目目录都被列出，不要遗漏任何一级或二级目录**
-5. 对于 Java 多模块项目，每个模块都要列出其 src/main/java 下的主要包
-6. 先展示完整的树形结构，再用 Markdown 对每个一级目录做 1-2 句功能说明
-
-示例格式：
-```
-project/
-├── module-a/              # 模块A - 用户服务
-│   ├── src/main/java/     # Java 源代码
-│   │   └── com/xxx/       # 核心业务包
-│   └── src/main/resources/ # 配置文件
-├── module-b/              # 模块B - 订单服务
-│   ├── src/main/java/
-│   └── pom.xml
-├── common/                # 公共模块
-└── pom.xml                # Maven 父 POM
-```
-
-## 模块说明
-- **module-a/**: 用户服务模块，负责用户注册、登录、认证等功能
-- **module-b/**: 订单服务模块，处理订单创建、支付、退款等业务
-- **common/**: 公共工具类和通用组件
+1. 用树形结构展示所有一级和二级目录，每个目录后用 `#` 注释说明作用
+2. **不要遗漏任何一级目录/模块**
+3. 忽略 .gitignore、LICENSE、__pycache__、node_modules 等
+4. 树形结构之后，用列表对每个一级目录做一句话功能说明
 
 ---
-目录结构信息（第一部分为所有目录，第二部分为根文件，第三部分为示例文件路径）:
+目录结构:
 {tree_summary[:8000]}
 
 ---
 README:
-{readme_content[:3000]}
+{readme_content[:2000]}
 
-请确保覆盖所有一级和二级目录，用 Markdown 格式回答。"""
+请用 Markdown 格式回答，先展示树形结构（用代码块），再用列表做模块说明。"""
 
     return _call_llm(prompt, SYSTEM_PROMPT)
 
 
 def step7_diagrams(summary: str, design: str, tech: str, architecture: str, tree_summary: str) -> list:
-    """Step 7: 生成 Mermaid 可视化图表（设计思路图、架构图、流程图、技术栈图）。"""
-    prompt = f"""你是一个擅长用 Mermaid 画图的技术专家。请基于以下项目分析结果，生成 4 张 Mermaid 图表代码。
+    """Step 7: 逐张生成 Mermaid 可视化图表，每张单独调用避免响应截断。"""
+    common_rules = """注意：
+- 兼容 Mermaid v10.9.1 语法
+- 节点 ID 用英文字母，节点文字用中文放在方括号内，如: A[用户请求] --> B[API网关]
+- 节点文字中禁止: 双引号 单引号 反引号 圆括号 方括号 花括号 竖线 尖括号 分号 和号 井号（用中文替代）
+- 边标签用 -->|标签| 语法
+- subgraph 标题只用简单中文
+- 每张图 6-10 个节点，保持简洁
+- 不用 ::: 样式，不用 direction 声明
+- sequenceDiagram 参与者名称用英文，消息文字用中文"""
 
-要求：
-1. **设计思路图**（design）：用 `graph TD` 展示项目的核心设计理念、关键设计决策和各模块设计目标之间的关系
-2. **架构图**（architecture）：用 `graph TD` 展示系统模块和组件之间的关系，包含数据流向箭头
-3. **业务流程图**（flow）：用 `flowchart LR` 或 `sequenceDiagram` 展示系统核心业务流程或用户操作流程
-4. **技术栈图**（tech）：用 `graph LR` 展示技术选型分类（语言、框架、数据库、工具等）
+    context = f"""\n项目概览: {summary[:400]}\n架构描述: {architecture[:600]}\n目录结构: {tree_summary[:600]}"""
 
-注意：
-- 必须兼容 Mermaid v10.9.1 语法
-- 节点 ID 用英文字母（如 A, B, C 或 api, db, web）
-- 节点文字用中文，放在方括号内，例如: A[用户请求] --> B[API网关]
-- 节点文字中禁止使用以下字符: 双引号 单引号 反引号 圆括号 方括号 花括号 竖线 尖括号 分号 和号 井号
-- 如果需要这些特殊字符，用中文替代（如"数据库/缓存"改为"数据库和缓存"）
-- 边标签用 -->|标签文字| 语法，标签中也不能有特殊字符
-- subgraph 标题只用简单中文，不含特殊字符
-- 保持简洁，每张图 8-15 个节点
-- 不要使用 ::: 样式语法
-- 不用 direction 声明（用顶层 graph TD/LR 控制方向）
+    diagram_specs = [
+        ('design', '设计思路图', '用 `graph TD` 展示项目核心设计理念和各模块设计目标之间的关系'),
+        ('architecture', '系统架构图', '用 `graph TD` 加 subgraph 展示系统模块和组件之间的关系，包含数据流向'),
+        ('flow', '业务流程图', '用 `sequenceDiagram` 展示核心业务流程中各模块的调用顺序'),
+        ('tech', '技术栈图', '用 `graph LR` 加 subgraph 展示技术选型分类'),
+        ('dependency', '模块依赖图', '用 `graph LR` 展示各业务模块之间的依赖和调用关系'),
+        ('callgraph', '调用链路图', '用 `sequenceDiagram` 展示一个典型 API 请求从入口到数据库的完整调用链路'),
+        ('deployment', '部署架构图', '用 `graph TD` 加 subgraph 展示生产环境部署拓扑'),
+    ]
 
----
-项目概览: {summary[:1500]}
-设计思路: {design[:1500]}
-技术选型: {tech[:1500]}
-架构描述: {architecture[:1500]}
-目录结构: {tree_summary[:2000]}
+    all_diagrams = []
+    for dtype, title, desc in diagram_specs:
+        try:
+            prompt = f"""请生成 1 张「{title}」的 Mermaid 代码。要求：{desc}。
+{common_rules}
+{context}
 
-请以 JSON 数组格式返回，每个元素包含 title（图表标题）、type（diagram类型）、mermaid（Mermaid 代码）：
-[
-  {{"title": "设计思路图", "type": "design", "mermaid": "graph TD\\n  A[核心设计] --> B[模块拆分]\\n  A --> C[数据流]"}},
-  {{"title": "系统架构图", "type": "architecture", "mermaid": "graph TD\\n  A[前端] --> B[API层]\\n  B --> C[数据库]"}},
-  {{"title": "业务流程图", "type": "flow", "mermaid": "graph LR\\n  A[开始] --> B[处理] --> C[结束]"}},
-  {{"title": "技术栈总览", "type": "tech", "mermaid": "graph LR\\n  A[后端] --> B[Spring Boot]\\n  A --> C[MySQL]"}}
-]"""
+请以 JSON 格式返回（不要 markdown 代码块包裹）：
+{{"title": "{title}", "type": "{dtype}", "mermaid": "graph TD\\n  A[...] --> B[...]"}}"""
 
-    result = _call_llm(prompt, SYSTEM_PROMPT)
-    try:
-        diagrams = json.loads(_extract_json(result))
-        if isinstance(diagrams, list):
-            return diagrams
-    except json.JSONDecodeError:
-        pass
-    return []
+            result = _call_llm(prompt, SYSTEM_PROMPT, max_tokens=2048)
+            parsed = json.loads(_extract_json(result))
+            if isinstance(parsed, dict) and 'mermaid' in parsed:
+                all_diagrams.append(parsed)
+            elif isinstance(parsed, list) and parsed:
+                all_diagrams.append(parsed[0])
+        except Exception as e:
+            logger.warning(f'Step 7 图表「{title}」生成失败: {e}')
+            continue
+
+    return all_diagrams
 
 
 def analyze_project(repo_content: dict) -> dict:
@@ -303,14 +307,19 @@ def analyze_project(repo_content: dict) -> dict:
     config_content = ''
     code_files = []
 
+    config_filenames = {'package.json', 'pyproject.toml', 'requirements.txt',
+                         'dockerfile', 'docker-compose.yml', 'setup.py', 'setup.cfg',
+                         'cargo.toml', 'go.mod', 'pom.xml', 'build.gradle',
+                         'makefile', '.env.example', 'application.yml',
+                         'application.yaml', 'application.properties'}
     for f in files:
-        path = f['path'].lower()
-        if 'readme' in path:
+        path_lower = f['path'].lower()
+        filename = f['path'].split('/')[-1].lower()
+        if 'readme' in path_lower:
             readme_content += f['content'] + '\n'
-        elif path.endswith('.md'):
+        elif path_lower.endswith('.md'):
             docs_content += f"\n--- {f['path']} ---\n{f['content']}"
-        elif any(cfg in path for cfg in ['package.json', 'pyproject.toml', 'requirements.txt',
-                                          'dockerfile', 'setup.py', 'cargo.toml', 'go.mod']):
+        elif filename in config_filenames or (path_lower.endswith(('.xml', '.properties', '.yml', '.yaml')) and '/src/' not in path_lower):
             config_content += f"\n--- {f['path']} ---\n{f['content']}"
         else:
             code_files.append(f)
@@ -329,51 +338,102 @@ def analyze_project(repo_content: dict) -> dict:
         'status': 'partial',
     }
 
+    # 按模块分组代码文件，确保各步骤均匀覆盖所有模块
+    from collections import defaultdict
+    module_code = defaultdict(list)
+    for f in code_files:
+        module = f['path'].split('/')[0] if '/' in f['path'] else '_root'
+        module_code[module].append(f)
+
+    def _balanced_sample(n_files: int, max_chars: int) -> list:
+        """从各模块轮询采样代码文件，确保覆盖所有模块。"""
+        sampled = []
+        per_module = max(2, n_files // max(len(module_code), 1))
+        for mod in sorted(module_code.keys()):
+            sampled.extend(module_code[mod][:per_module])
+        # 去重并截断到 n_files
+        seen = set()
+        unique = []
+        for f in sampled:
+            if f['path'] not in seen:
+                seen.add(f['path'])
+                unique.append(f)
+        return unique[:n_files]
+
     try:
         # Step 1
-        step1 = step1_overview_and_design(readme_content, docs_content)
+        step1 = step1_overview_and_design(readme_content, docs_content, tree_summary)
         result['summary'] = step1.get('summary', '')
         result['design_thinking'] = step1.get('design_thinking', '')
+    except Exception as e:
+        logger.error(f'Step 1 项目概览分析失败: {e}')
 
-        # Step 2
-        code_sample = '\n'.join(f['content'][:2000] for f in code_files[:5])
+    try:
+        # Step 2：均匀采样各模块代码用于技术选型
+        step2_files = _balanced_sample(12, 8000)
+        code_sample = '\n'.join(f"--- {f['path']} ---\n{f['content'][:3000]}" for f in step2_files)
         result['tech_stack'] = step2_tech_stack(config_content, code_sample)
+    except Exception as e:
+        logger.error(f'Step 2 技术选型分析失败: {e}')
 
-        # Step 3
-        core_code = '\n'.join(f"\n--- {f['path']} ---\n{f['content'][:2000]}" for f in code_files[:8])
+    try:
+        # Step 3：均匀采样各模块代码用于架构分析
+        step3_files = _balanced_sample(18, 10000)
+        core_code = '\n'.join(f"\n--- {f['path']} ---\n{f['content'][:3000]}" for f in step3_files)
         result['architecture'] = step3_architecture(tree_summary, core_code)
+    except Exception as e:
+        logger.error(f'Step 3 架构分析失败: {e}')
 
-        # Step 4
-        result['key_code_snippets'] = step4_key_code_snippets(code_files)
+    try:
+        # Step 4：均匀采样各模块代码用于核心代码解读
+        step4_files = _balanced_sample(24, 25000)
+        result['key_code_snippets'] = step4_key_code_snippets(step4_files)
+    except Exception as e:
+        logger.error(f'Step 4 核心代码分析失败: {e}')
 
+    try:
         # Step 5: 应用场景 + 使用指南
         result['use_cases'] = step5_use_cases(
             result['summary'], result['design_thinking'], readme_content
         )
+    except Exception as e:
+        logger.error(f'Step 5 应用场景分析失败: {e}')
+
+    try:
         result['usage_guide'] = step5b_usage_guide(
             readme_content, config_content, tree_summary
         )
+    except Exception as e:
+        logger.error(f'Step 5b 使用指南生成失败: {e}')
 
+    try:
         # Step 6: 经验教训
         result['lessons_learned'] = step6_lessons_learned(
             result['summary'], result['design_thinking'],
             result['tech_stack'], result['architecture']
         )
+    except Exception as e:
+        logger.error(f'Step 6 经验教训分析失败: {e}')
 
+    try:
         # Step 6b: 目录结构说明
         result['directory_structure'] = step6b_directory_structure(tree_summary, readme_content)
+    except Exception as e:
+        logger.error(f'Step 6b 目录结构分析失败: {e}')
 
+    try:
         # Step 7: 生成 Mermaid 可视化图表
         result['diagrams'] = step7_diagrams(
             result['summary'], result['design_thinking'],
             result['tech_stack'], result['architecture'],
             tree_summary,
         )
-
-        result['status'] = 'analyzed'
     except Exception as e:
-        logger.error(f'项目分析失败: {e}')
-        # 保留已完成步骤的结果，status 为 partial
+        logger.error(f'Step 7 图表生成失败: {e}')
+
+    # 判断整体状态：有 summary 即认为分析成功
+    if result['summary']:
+        result['status'] = 'analyzed'
 
     return result
 

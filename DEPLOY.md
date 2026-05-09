@@ -96,11 +96,24 @@ bash deploy.sh
 ```bash
 docker exec aisalon-app python -c "
 from app import create_app
+from models import db, User
 from users.services import UserService
 app = create_app()
 with app.app_context():
-    result = UserService.register('admin', 'admin123456', email='admin@aisalon.com')
-    print('创建成功' if result else '用户已存在')
+    user = User.query.filter_by(username='admin').first()
+    if user:
+        user.is_admin = True
+        db.session.commit()
+        print('已设置为管理员')
+    else:
+        result = UserService.register('admin', 'admin123456', email='admin@aisalon.com')
+        if result:
+            u = User.query.filter_by(username='admin').first()
+            u.is_admin = True
+            db.session.commit()
+            print('创建成功并设为管理员')
+        else:
+            print('创建失败')
 "
 ```
 
