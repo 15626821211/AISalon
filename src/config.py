@@ -25,6 +25,7 @@ class Config:
             }
         }
     DEBUG = os.environ.get('DEBUG', 'False').lower() in ['true', '1', 't']
+    CSS_VERSION = '20260509'
     OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
     OPENAI_BASE_URL = os.environ.get('OPENAI_BASE_URL', 'https://dmc-openai-swec.openai.azure.com/openai/v1')
     OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-5.4')
